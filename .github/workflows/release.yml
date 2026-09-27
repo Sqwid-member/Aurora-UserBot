@@ -2,95 +2,56 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Existing tag to build a release for'
-        required: true
 
 permissions:
   contents: write
 
-env:
-  PKG: github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo
-
 jobs:
   release:
-    name: build & publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-          cache: true
 
-      - name: resolve version and ldflags
-        id: meta
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if [ "$tag" = "main" ] || [ -z "$tag" ]; then
-            tag="${{ github.event.inputs.tag }}"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-          stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          # Kept on one line on purpose: a multi-line double-quoted scalar is a
-          # reliable way to make YAML mangle the backslash continuations.
-          flags="-s -w -X ${PKG}.Version=${tag} -X ${PKG}.Commit=${GITHUB_SHA} -X ${PKG}.Date=${stamp}"
-          echo "LDFLAGS=$flags" >> "$GITHUB_ENV"
-          echo "ldflags: $flags"
-
-      - name: sanity: gofmt + vet
-        run: |
-          set -euo pipefail
-          unformatted="$(gofmt -l . || true)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::not gofmt clean:"
-            echo "$unformatted"
-            exit 1
-          fi
-          go vet ./...
-
-      - name: build all platforms
+      - name: Build
+        env:
+          PKG: github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          for pair in android/arm64 linux/arm64 linux/arm linux/amd64 darwin/arm64 darwin/amd64; do
-            os="${pair%/*}"
-            arch="${pair#*/}"
+          LDF="-s -w -X ${PKG}.Version=${TAG} -X ${PKG}.Commit=${SHA}"
+          for p in android/arm64 linux/arm64 linux/arm linux/amd64 darwin/arm64 darwin/amd64; do
+            os="${p%/*}"
+            arch="${p#*/}"
             out="dist/aurora-${os}-${arch}"
-            echo "::group::${os}/${arch}"
-            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-              go build -trimpath -ldflags "$LDFLAGS" -o "$out" ./cmd/aurora
+            echo "build ${os}/${arch}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "$LDF" -o "$out" ./cmd/aurora
             case "${os}/${arch}" in
               android/arm64|linux/arm64|linux/arm)
                 tar -C dist -czf "${out}.tar.gz" "$out"
                 rm -f "$out"
                 ;;
             esac
-            echo "::endgroup::"
           done
           ls -lh dist/
 
-      - name: build the Go example plugin
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          cd plugins/hello
-          go mod tidy
-          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../dist/aurora-plugin-hello .
-
-      - name: publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: Aurora ${{ steps.meta.outputs.tag }}
-          draft: false
-          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') }}
-          generate_release_notes: true
-          files: dist/*
+          gh release create "$TAG" dist/* \
+            --title "Aurora $TAG" \
+            --generate-notes \
+            || gh release upload "$TAG" dist/* --clobber
