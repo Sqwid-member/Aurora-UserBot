@@ -155,10 +155,7 @@ func (p *Instance) Start(ctx context.Context) error {
 	cmd.Dir = p.Dir
 	cmd.Env = p.buildEnv()
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid:   true, // own process group: one kill takes the whole tree down
-		Pdeathsig: syscall.SIGKILL,
-	}
+	cmd.SysProcAttr = procAttr()
 	cmd.Cancel = func() error {
 		return killGroup(cmd.Process, syscall.SIGKILL)
 	}
