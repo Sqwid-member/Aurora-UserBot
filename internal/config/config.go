@@ -113,7 +113,9 @@ type Plugins struct {
 	StartTimeoutSec int `json:"start_timeout_sec"`
 	// Sandbox enables Landlock filesystem isolation when the kernel supports it.
 	Sandbox bool `json:"sandbox"`
-	// DefaultMemoryMB is the per-plugin address-space limit when unspecified.
+	// DefaultMemoryMB is the per-plugin memory limit (RLIMIT_DATA) applied
+	// when a manifest does not set one. Keep it generous: it caps a runaway
+	// plugin, it is not a target to squeeze plugins into.
 	DefaultMemoryMB int `json:"default_memory_mb"`
 }
 
@@ -144,7 +146,7 @@ func Default() *Config {
 		Plugins: Plugins{
 			StartTimeoutSec: 15,
 			Sandbox:         true,
-			DefaultMemoryMB: 128,
+			DefaultMemoryMB: 256,
 			Disabled:        []string{},
 		},
 	}

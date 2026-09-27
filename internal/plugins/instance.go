@@ -147,14 +147,18 @@ func (p *Instance) Start(ctx context.Context) error {
 		return err
 	}
 
+	// WithoutCancel so that a caller giving up (say, the panel closing an HTTP
+	// request) does not kill a plugin the user asked to keep running; the
+	// plugin's lifetime is owned by Start/Stop, not by whoever called Start.
 	p.ctx, p.cancel = context.WithCancel(context.WithoutCancel(ctx))
 	p.done = make(chan struct{})
 	p.writerEnd = make(chan struct{})
 
-	cmd := exec.Command(bin, args...)
+	// Cancel and WaitDelay may only be set on a Command created with
+	// CommandContext — exec enforces that, and rightly so.
+	cmd := exec.CommandContext(p.ctx, bin, args...)
 	cmd.Dir = p.Dir
 	cmd.Env = p.buildEnv()
-	cmd.Stdin = nil
 	cmd.SysProcAttr = procAttr()
 	cmd.Cancel = func() error {
 		return killGroup(cmd.Process, syscall.SIGKILL)

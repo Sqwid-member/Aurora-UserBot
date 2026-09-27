@@ -23,8 +23,14 @@ type frame struct {
 	ID json.RawMessage `json:"id,omitempty"`
 }
 
+var (
+	seq     int
+	callTag = map[string]string{} // id -> method, so responses can be labelled
+)
+
 func main() {
-	var sent []string
+	var seen []string
+
 	in := bufio.NewScanner(os.Stdin)
 	in.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for in.Scan() {
@@ -32,22 +38,20 @@ func main() {
 		if json.Unmarshal(in.Bytes(), &f) != nil {
 			continue
 		}
+
+		// A response to one of our own calls.
+		if f.Method == "" && f.ID != nil {
+			report(string(f.ID), f)
+			continue
+		}
+
 		switch f.Method {
 		case "plugin.hello":
-			emit(map[string]any{
-				"jsonrpc": "2.0", "id": f.ID,
-				"result": map[string]any{"ok": true, "sdk": "stdlib"},
-			})
+			emit(map[string]any{"jsonrpc": "2.0", "id": f.ID, "result": map[string]any{"ok": true}})
 		case "plugin.load":
-			emit(map[string]any{
-				"jsonrpc": "2.0", "id": f.ID,
-				"result": map[string]any{"ok": true},
-			})
+			emit(map[string]any{"id": f.ID, "result": map[string]any{"ok": true}})
 		case "plugin.unload":
-			emit(map[string]any{
-				"jsonrpc": "2.0", "id": f.ID,
-				"result": map[string]any{"ok": true},
-			})
+			emit(map[string]any{"id": f.ID, "result": map[string]any{"ok": true}})
 			os.Exit(0)
 		case "event":
 			var ev struct {
@@ -55,9 +59,14 @@ func main() {
 				Data any    `json:"data"`
 			}
 			_ = json.Unmarshal(f.Params, &ev)
-			sent = append(sent, ev.Name)
-			// Exercise a host API call so the reverse channel is covered.
+			seen = append(seen, ev.Name)
+			// Exercise the reverse channel: the plugin calls host methods and
+			// the test inspects what the host answered. The test manifest
+			// grants tg:send/read and config but NOT net, so http.request
+			// must come back forbidden.
 			call("kv.set", map[string]any{"key": "testplugin:last", "value": ev.Name})
+			call("http.request", map[string]any{"url": "http://example.com"})
+			call("tg.get_me", nil)
 		case "command":
 			var p struct {
 				Name string `json:"name"`
@@ -68,7 +77,7 @@ func main() {
 			if strings.TrimSpace(p.Text) != "" {
 				text = strings.ToUpper(p.Text)
 			}
-			emit(map[string]any{"jsonrpc": "2.0", "id": f.ID, "result": map[string]any{"text": text}})
+			emit(map[string]any{"id": f.ID, "result": map[string]any{"text": text}})
 		default:
 			if f.ID != nil {
 				emit(map[string]any{
@@ -80,14 +89,43 @@ func main() {
 	}
 }
 
-var seq int
+// report stores the outcome of a host call so the test can assert on it.
+func report(id string, f frame) {
+	method, ok := callTag[id]
+	if !ok {
+		return
+	}
+	delete(callTag, id)
+
+	var value string
+	switch {
+	case f.Error != nil:
+		value = "error:" + f.Error.Message
+	case method == "http.request":
+		var res struct {
+			Status int `json:"status"`
+		}
+		if json.Unmarshal(f.Result, &res) == nil {
+			value = "ok:status=" + itoa(res.Status)
+		} else {
+			value = "ok"
+		}
+	default:
+		value = "ok"
+	}
+	call("kv.set", map[string]any{"key": "testplugin:" + method, "value": value})
+}
 
 func call(method string, params map[string]any) {
 	seq++
+	id := itoa(seq)
+	callTag[id] = method
 	emit(map[string]any{
-		"jsonrpc": "2.0", "id": seq, "method": method, "params": params,
+		"jsonrpc": "2.0", "id": json.RawMessage(id), "method": method, "params": params,
 	})
 }
+
+func itoa(n int) string { return fmt.Sprintf("%d", n) }
 
 func emit(v any) {
 	buf, _ := json.Marshal(v)

@@ -10,9 +10,19 @@ import (
 
 // applyLimits installs resource limits on a freshly started plugin process.
 //
-// RLIMIT_AS is the one that matters on Android: it caps the whole address
-// space, so a runaway plugin hits an allocation failure and dies instead of
-// pushing the kernel into the OOM killer and taking Aurora with it.
+// Why RLIMIT_DATA and not RLIMIT_AS
+//
+// RLIMIT_AS caps *virtual address space*. Go, Python and Node all reserve
+// hundreds of megabytes of address space at startup for runtime bookkeeping —
+// the Go runtime alone dies with "failed to reserve page summary memory" under
+// a 512 MB AS cap, and so does CPython and V8. So an AS cap does not limit a
+// plugin's real memory use; it just makes the plugin impossible to run.
+//
+// RLIMIT_DATA, since Linux 4.7, also applies to anonymous mmap, which is where
+// a managed runtime actually keeps its heap. It lets a plugin start normally and
+// then kills it with a real OOM once it genuinely grows past the cap. That is
+// the behaviour you want on a phone: a runaway plugin dies, the host and every
+// other plugin keep running.
 func applyLimits(pid int, l Limits) []string {
 	var warnings []string
 
@@ -22,8 +32,8 @@ func applyLimits(pid int, l Limits) []string {
 
 	if l.MemoryMB > 0 {
 		v := uint64(l.MemoryMB) * 1024 * 1024
-		if err := unix.Prlimit(pid, unix.RLIMIT_AS, hard(v), nil); err != nil {
-			warnings = append(warnings, fmt.Sprintf("RLIMIT_AS: %v", err))
+		if err := unix.Prlimit(pid, unix.RLIMIT_DATA, hard(v), nil); err != nil {
+			warnings = append(warnings, fmt.Sprintf("RLIMIT_DATA: %v", err))
 		}
 	}
 	if l.CPUSeconds > 0 {

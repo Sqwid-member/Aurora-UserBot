@@ -23,7 +23,7 @@
     "tg": ["send"]
   },
   "limits": {
-    "memory_mb": 32,
+    "memory_mb": 64,
     "idle_timeout_sec": 1800
   }
 }

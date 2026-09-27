@@ -344,18 +344,31 @@ func (h *Host) Commands() []CommandSpec {
 }
 
 // Command routes a user command to the plugin that declared it.
+//
+// text is the raw line the user typed. The leading word may or may not be the
+// command name itself ("/ping go" from a chat, "ping go" from the panel), so a
+// matching first word is stripped before the arguments are handed over.
 func (h *Host) Command(ctx context.Context, name, text string) (string, error) {
 	name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 	if name == "" {
 		return "", ErrNoCommand
 	}
-	head, rest, _ := strings.Cut(text, " ")
-	_ = head
 
 	// "plugin.command" addresses a specific plugin.
 	target, cmdName, scoped := strings.Cut(name, ".")
 	if !scoped {
 		target, cmdName = "", name
+	}
+
+	// Drop the command name if the caller included it.
+	argText := strings.TrimSpace(text)
+	if first, rest, found := strings.Cut(argText, " "); found {
+		if strings.EqualFold(strings.TrimPrefix(first, "/"), cmdName) ||
+			strings.EqualFold(strings.TrimPrefix(first, "/"), target+"."+cmdName) {
+			argText = strings.TrimSpace(rest)
+		}
+	} else if strings.EqualFold(strings.TrimPrefix(argText, "/"), cmdName) {
+		argText = ""
 	}
 
 	h.mu.RLock()
@@ -387,7 +400,7 @@ func (h *Host) Command(ctx context.Context, name, text string) (string, error) {
 
 	var res proto.CommandResult
 	if err := chosen.Call(cctx, "command", proto.CommandRequest{
-		Name: spec.Name, Text: strings.TrimSpace(rest), Args: auroraFields(rest),
+		Name: spec.Name, Text: argText, Args: auroraFields(argText),
 	}, &res); err != nil {
 		return "", err
 	}

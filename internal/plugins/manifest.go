@@ -121,6 +121,7 @@ type Limits struct {
 // Hard ceilings the host will never let a manifest exceed.
 const (
 	MaxMemoryMB     = 2048
+	MinMemoryMB     = 64
 	MaxCPUSeconds   = 3600
 	MaxOutputKB     = 8192
 	MaxIdleTimeout  = 86400
@@ -201,8 +202,11 @@ func (m *Manifest) Validate(dir string) error {
 }
 
 func (l *Limits) clamp() {
-	if l.MemoryMB < 16 {
-		l.MemoryMB = 0 // let the host default apply
+	// Below this a Go/Python/Node plugin cannot even reach its first line of
+	// user code, so treat anything smaller as "unspecified" and let the host
+	// default apply instead of killing the process instantly.
+	if l.MemoryMB < MinMemoryMB {
+		l.MemoryMB = 0
 	}
 	if l.MemoryMB > MaxMemoryMB {
 		l.MemoryMB = MaxMemoryMB

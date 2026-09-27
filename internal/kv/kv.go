@@ -74,8 +74,9 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// loop is the background flusher. It exits when Close closes s.done, which
+// Close owns exclusively — closing it here too would panic on a double close.
 func (s *Store) loop() {
-	defer close(s.done)
 	t := time.NewTicker(flushInterval)
 	defer t.Stop()
 	for {

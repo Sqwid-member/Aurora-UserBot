@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"sync"
 	"testing"
 	"time"
@@ -14,13 +13,26 @@ import (
 // pipe — exactly the topology of a real plugin process.
 func pipePair(t *testing.T) (*Conn, *Conn) {
 	t.Helper()
-	c1, c2 := net.Pipe()
+	c1, c2 := newMemPair(256)
 	t.Cleanup(func() {
 		_ = c1.Close()
 		_ = c2.Close()
 	})
-	// side A reads c1, writes c2; side B reads c2, writes c1.
-	return NewConn(c1, c2), NewConn(c2, c1)
+	// Each memConn is one full-duplex channel, so a Conn uses the same one for
+	// reading and writing: side A speaks over c1, side B over c2.
+	return NewConn(c1, c1), NewConn(c2, c2)
+}
+
+// serveBoth runs the read loops on both ends. Without this a response has
+// nowhere to land and every Call blocks forever — which is exactly what a
+// plugin process does NOT do, since both sides speak.
+func serveBoth(t *testing.T, a, b *Conn) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	go func() { _ = a.Serve(ctx) }()
+	go func() { _ = b.Serve(ctx) }()
+	return ctx
 }
 
 func TestCallAndResult(t *testing.T) {
@@ -34,10 +46,7 @@ func TestCallAndResult(t *testing.T) {
 		return map[string]any{"sum": p.A + p.B}, nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	go func() { _ = b.Serve(ctx) }()
+	ctx := serveBoth(t, a, b)
 
 	var res struct {
 		Sum int `json:"sum"`
@@ -53,9 +62,7 @@ func TestCallAndResult(t *testing.T) {
 func TestUnknownMethodReturnsError(t *testing.T) {
 	a, b := pipePair(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	go func() { _ = b.Serve(ctx) }()
+	ctx := serveBoth(t, a, b)
 
 	err := a.Call(ctx, "nope", nil, nil)
 	var rpcErr *Error
@@ -79,9 +86,7 @@ func TestNotifyIsFireAndForget(t *testing.T) {
 		got <- p.Text
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	go func() { _ = b.Serve(ctx) }()
+	serveBoth(t, a, b)
 
 	if err := a.Notify("ping", map[string]string{"text": "hello"}); err != nil {
 		t.Fatalf("notify: %v", err)
@@ -108,9 +113,7 @@ func TestConcurrentCallsDoNotInterleave(t *testing.T) {
 		return map[string]any{"n": p.N}, nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	go func() { _ = b.Serve(ctx) }()
+	ctx := serveBoth(t, a, b)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -140,9 +143,7 @@ func TestCallTimeout(t *testing.T) {
 		return nil, nil
 	})
 
-	sctx, cancelServe := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancelServe()
-	go func() { _ = b.Serve(sctx) }()
+	serveBoth(t, a, b)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -156,9 +157,7 @@ func TestCallTimeout(t *testing.T) {
 func TestMalformedFrameDoesNotKillConnection(t *testing.T) {
 	a, b := pipePair(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	go func() { _ = b.Serve(ctx) }()
+	ctx := serveBoth(t, a, b)
 
 	// Simulate garbage arriving on the wire.
 	if _, err := a.w.Write([]byte("{not json\n")); err != nil {
@@ -181,9 +180,7 @@ func TestHandlerPanicBecomesError(t *testing.T) {
 		panic("kaboom")
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	go func() { _ = b.Serve(ctx) }()
+	ctx := serveBoth(t, a, b)
 
 	err := a.Call(ctx, "boom", nil, nil)
 	var rpcErr *Error

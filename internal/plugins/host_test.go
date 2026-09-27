@@ -217,8 +217,8 @@ func TestEventDeliveryAndHostAPIFromPlugin(t *testing.T) {
 
 func TestPermissionEnforcement(t *testing.T) {
 	svc := &fakeServices{ready: true}
-	// The test plugin declares only send/read, not net or config writes.
-	h, _ := newHost(t, svc)
+	// The test manifest grants tg:send/read and config, but not net.
+	h, store := newHost(t, svc)
 	ctx := context.Background()
 
 	if _, err := h.Install(filepath.Join(h.Root(), "testplugin")); err != nil {
@@ -227,12 +227,35 @@ func TestPermissionEnforcement(t *testing.T) {
 	if err := h.Start(ctx, "testplugin"); err != nil {
 		t.Fatal(err)
 	}
-	inst, _ := h.Get("testplugin")
 
-	err := inst.Call(ctx, "http.request", map[string]any{"url": "http://example.com"}, nil)
-	if err == nil || !strings.Contains(err.Error(), "net") {
-		t.Fatalf("http.request must be denied without the net permission, got %v", err)
+	h.Emit("core.start", map[string]any{})
+
+	// The plugin calls http.request on every event; the host must refuse it
+	// and say why. Permissions are enforced on the plugin's own call, so the
+	// proof has to come from the plugin's side of the wire.
+	verdict := waitForString(t, store, "testplugin:http.request")
+	if !strings.Contains(verdict, "error:") || !strings.Contains(verdict, "net") {
+		t.Fatalf("http.request verdict = %q, want a forbidden error naming the net permission", verdict)
 	}
+
+	// tg.get_me needs no capability, so it must succeed.
+	if v := waitForString(t, store, "testplugin:tg.get_me"); !strings.HasPrefix(v, "ok") {
+		t.Fatalf("tg.get_me verdict = %q, want ok", v)
+	}
+}
+
+// waitForString polls the shared KV until key holds a non-empty value.
+func waitForString(t *testing.T, store *kv.Store, key string) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if v, ok := store.GetString(key); ok && v != "" {
+			return v
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	v, _ := store.GetString(key)
+	return v
 }
 
 func TestStartAllSkipsDisabled(t *testing.T) {

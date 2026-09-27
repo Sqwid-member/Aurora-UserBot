@@ -196,8 +196,13 @@ func (c *Conn) route(ctx context.Context, msg Message) {
 			delete(c.pending, key)
 			c.pendingMu.Unlock()
 			if ok {
-				ch <- msg
-				close(ch)
+				// Never close here: Close may be closing the same channel
+				// concurrently. The caller's context and c.done cover the
+				// abandonment case, and a full buffer means "already gone".
+				select {
+				case ch <- msg:
+				default:
+				}
 			}
 		}
 		return
@@ -208,7 +213,11 @@ func (c *Conn) route(ctx context.Context, msg Message) {
 		go c.invoke(ctx, msg, nil)
 		return
 	}
-	c.invoke(ctx, msg, msg.ID)
+	// Reply off the read loop. If we wrote synchronously here, a peer that is
+	// slow to read would wedge this side completely: it would stop draining
+	// its input while blocked on its output, and the two would deadlock.
+	// JSON-RPC matches responses by id, so out-of-order replies are fine.
+	go c.invoke(ctx, msg, msg.ID)
 }
 
 func (c *Conn) invoke(ctx context.Context, msg Message, id *json.RawMessage) {
@@ -335,7 +344,10 @@ func (c *Conn) Call(ctx context.Context, method string, params any, out any) err
 	}
 }
 
-// Close shuts the connection down and fails every pending call.
+// Close shuts the connection down and unblocks every pending call.
+//
+// Pending channels are dropped rather than closed: a response may still be in
+// flight, and sending on a closed channel would panic the whole host.
 func (c *Conn) Close() error {
 	if c.closed.Swap(true) {
 		return nil
@@ -343,10 +355,7 @@ func (c *Conn) Close() error {
 	close(c.done)
 
 	c.pendingMu.Lock()
-	for k, ch := range c.pending {
-		delete(c.pending, k)
-		close(ch)
-	}
+	c.pending = make(map[string]chan Message)
 	c.pendingMu.Unlock()
 	return c.closeErr
 }
