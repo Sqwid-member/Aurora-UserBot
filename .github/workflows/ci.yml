@@ -36,6 +36,25 @@ jobs:
       - name: test
         run: go test ./... -count=1 -race -timeout 5m
 
+      - name: sdk builds
+        working-directory: sdk/go
+        run: go build ./... && go vet ./...
+
+      - name: example plugin builds
+        working-directory: plugins/hello
+        run: |
+          go mod tidy
+          go build -trimpath -ldflags '-s -w' -o /tmp/hello .
+
+      - name: example plugins are valid manifests
+        run: |
+          for d in plugins/*/; do
+            test -f "$d/aurora.plugin.json" || { echo "::error::$d has no manifest"; exit 1; }
+            python3 -c "import json,sys; json.load(open('$d/aurora.plugin.json'))" \
+              || { echo "::error::$d manifest is not valid JSON"; exit 1; }
+          done
+          echo "all example manifests parse"
+
   cross:
     name: cross-build
     runs-on: ubuntu-latest
