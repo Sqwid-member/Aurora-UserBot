@@ -2,8 +2,8 @@
 //
 // Design goals, in order:
 //
-//  1. Never block the caller. A full ring buffer drops the oldest record
-//     instead of stalling the MTProto update loop.
+//  1. Never block the caller. A bounded ring buffer and non-blocking
+//     subscribers mean logging can never stall the MTProto update loop.
 //  2. Tiny allocations. Records are pre-rendered strings.
 //  3. Human-readable on a terminal, parseable when piped to a file.
 package logx
@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -87,26 +88,24 @@ func F(key string, value any) Field { return Field{Key: key, Value: value} }
 
 // Record is a single log entry.
 type Record struct {
-	Time    time.Time `json:"time"`
-	Level   string    `json:"level"`
-	Scope   string    `json:"scope,omitempty"`
-	Msg     string    `json:"msg"`
-	Fields  []Field   `json:"fields,omitempty"`
-	Dropped uint64    `json:"dropped,omitempty"`
+	Time   time.Time `json:"time"`
+	Level  string    `json:"level"`
+	Scope  string    `json:"scope,omitempty"`
+	Msg    string    `json:"msg"`
+	Fields []Field   `json:"fields,omitempty"`
 }
 
 const (
 	defaultCapacity = 1024
-	// queueDepth bounds the async writer. Beyond this, records are dropped.
+	// queueDepth bounds each subscriber. Beyond this, records are dropped.
 	queueDepth = 4096
 )
 
-// Logger is a level-filtered, ring-buffered logger.
-type Logger struct {
-	level Level
-	scope string
-	color bool
-	sink  io.Writer
+// shared is the mutable state every scoped logger points at. Keeping it
+// behind a pointer is what lets Scoped build a new Logger without copying a
+// mutex — and why the web log viewer sees records from all scopes.
+type shared struct {
+	level atomic.Int32
 
 	mu      sync.RWMutex
 	ring    []Record
@@ -118,11 +117,19 @@ type Logger struct {
 	nextID uint64
 }
 
+// Logger is a level-filtered, ring-buffered logger.
+type Logger struct {
+	scope string
+	color bool
+	sink  io.Writer
+	st    *shared
+}
+
 // Options configures a Logger.
 type Options struct {
 	// Level is the minimum severity to record.
 	Level Level
-	// Color enables ANSI colours; defaults to auto-detect on stderr.
+	// Color enables ANSI colours.
 	Color bool
 	// Sink receives rendered text. Defaults to os.Stderr.
 	Sink io.Writer
@@ -138,23 +145,21 @@ func New(opts Options, scope string) *Logger {
 	if opts.Sink == nil {
 		opts.Sink = os.Stderr
 	}
-	return &Logger{
-		level: opts.Level,
-		scope: scope,
-		color: opts.Color,
-		sink:  opts.Sink,
-		ring:  make([]Record, opts.Capacity),
-		subs:  make(map[uint64]chan Record),
+	st := &shared{
+		ring: make([]Record, opts.Capacity),
+		subs: make(map[uint64]chan Record),
 	}
+	st.level.Store(int32(opts.Level))
+	return &Logger{scope: scope, color: opts.Color, sink: opts.Sink, st: st}
 }
 
-// Scoped returns a child logger with an extended scope.
+// Scoped returns a child logger with an extended scope. Both loggers share one
+// ring buffer, one level and one subscriber set.
 func (l *Logger) Scoped(scope string) *Logger {
 	if l == nil {
 		return nil
 	}
-	child := *l
-	child.subs = nil // subscriptions are owned by the root logger
+	child := *l // copies only value fields: scope/color/sink/*shared
 	if child.scope == "" {
 		child.scope = scope
 	} else {
@@ -164,13 +169,23 @@ func (l *Logger) Scoped(scope string) *Logger {
 }
 
 // Level reports the current minimum severity.
-func (l *Logger) Level() Level { return l.level }
+func (l *Logger) Level() Level {
+	if l == nil {
+		return LevelInfo
+	}
+	return Level(l.st.level.Load())
+}
 
-// SetLevel changes the minimum severity.
-func (l *Logger) SetLevel(v Level) { l.level = v }
+// SetLevel changes the minimum severity for this logger and every scope.
+func (l *Logger) SetLevel(v Level) {
+	if l == nil {
+		return
+	}
+	l.st.level.Store(int32(v))
+}
 
 func (l *Logger) log(lv Level, msg string, fields ...Field) {
-	if l == nil || lv < l.level {
+	if l == nil || int32(lv) < l.st.level.Load() {
 		return
 	}
 	rec := Record{
@@ -185,22 +200,27 @@ func (l *Logger) log(lv Level, msg string, fields ...Field) {
 }
 
 func (l *Logger) store(rec Record) {
-	l.mu.Lock()
-	l.ring[l.head] = rec
-	l.head = (l.head + 1) % len(l.ring)
-	if l.count < len(l.ring) {
-		l.count++
+	st := l.st
+
+	st.mu.Lock()
+	st.ring[st.head] = rec
+	st.head = (st.head + 1) % len(st.ring)
+	if st.count < len(st.ring) {
+		st.count++
 	}
-	subs := make([]chan Record, 0, len(l.subs))
-	for _, c := range l.subs {
+	subs := make([]chan Record, 0, len(st.subs))
+	for _, c := range st.subs {
 		subs = append(subs, c)
 	}
-	l.mu.Unlock()
+	st.mu.Unlock()
 
 	for _, c := range subs {
 		select {
 		case c <- rec:
 		default: // slow consumer: never block the producer
+			st.mu.Lock()
+			st.dropped++
+			st.mu.Unlock()
 		}
 	}
 }
@@ -214,11 +234,9 @@ func (l *Logger) write(rec Record) {
 	b.WriteString(rec.Time.Format("15:04:05.000"))
 	b.WriteByte(' ')
 	if l.color {
-		c, ok := levelColor[Level(len(rec.Level))-LevelTrace]
-		if !ok {
-			c = ""
+		if c, ok := levelColor[parseLevel(rec.Level)]; ok {
+			b.WriteString(c)
 		}
-		b.WriteString(c)
 	}
 	b.WriteString(fmt.Sprintf("%-5s", rec.Level))
 	if l.color {
@@ -238,6 +256,11 @@ func (l *Logger) write(rec Record) {
 	}
 	b.WriteByte('\n')
 	_, _ = io.WriteString(l.sink, b.String())
+}
+
+func parseLevel(s string) Level {
+	lvl, _ := ParseLevel(s)
+	return lvl
 }
 
 // Log records a message at an explicit level.
@@ -264,44 +287,62 @@ func (l *Logger) Fatal(msg string, f ...Field) {
 	os.Exit(1)
 }
 
-// Tail returns up to n most recent records, oldest first.
+// Tail returns up to n most recent records across every scope, oldest first.
 func (l *Logger) Tail(n int) []Record {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	if n <= 0 || n > l.count {
-		n = l.count
+	if l == nil {
+		return nil
+	}
+	st := l.st
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	if n <= 0 || n > st.count {
+		n = st.count
 	}
 	out := make([]Record, 0, n)
-	start := (l.head - n + len(l.ring)) % len(l.ring)
+	start := (st.head - n + len(st.ring)) % len(st.ring)
 	for i := 0; i < n; i++ {
-		out = append(out, l.ring[(start+i)%len(l.ring)])
+		out = append(out, st.ring[(start+i)%len(st.ring)])
 	}
 	return out
 }
 
 // Dropped reports how many records were discarded because a subscriber was slow.
 func (l *Logger) Dropped() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return l.dropped
+	if l == nil {
+		return 0
+	}
+	l.st.mu.RLock()
+	defer l.st.mu.RUnlock()
+	return l.st.dropped
 }
 
 // Subscribe registers a listener. The returned function unsubscribes and
 // closes the channel.
 func (l *Logger) Subscribe() (<-chan Record, func()) {
+	if l == nil {
+		closed := make(chan Record)
+		close(closed)
+		return closed, func() {}
+	}
 	ch := make(chan Record, queueDepth)
-	l.mu.Lock()
-	id := l.nextID
-	l.nextID++
-	l.subs[id] = ch
-	l.mu.Unlock()
+	st := l.st
+
+	st.mu.Lock()
+	id := st.nextID
+	st.nextID++
+	st.subs[id] = ch
+	st.mu.Unlock()
+
+	var once sync.Once
 	return ch, func() {
-		l.mu.Lock()
-		if c, ok := l.subs[id]; ok {
-			delete(l.subs, id)
-			close(c)
-		}
-		l.mu.Unlock()
+		once.Do(func() {
+			st.mu.Lock()
+			if c, ok := st.subs[id]; ok {
+				delete(st.subs, id)
+				close(c)
+			}
+			st.mu.Unlock()
+		})
 	}
 }
 

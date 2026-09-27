@@ -305,7 +305,7 @@ func cmdPlugins(layout paths.Layout, args []string) error {
 	if err != nil {
 		return err
 	}
-	_ = a.Plugins.Discover()
+	_, _ = a.Plugins.Discover()
 
 	sub := "ls"
 	if len(args) > 0 {

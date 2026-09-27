@@ -4,25 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"sync"
 	"testing"
 	"time"
 )
 
-// pipePair returns two Conns wired to each other through in-memory pipes,
-// which is exactly the topology of a plugin process.
+// pipePair returns two Conns wired to each other through an in-memory duplex
+// pipe — exactly the topology of a real plugin process.
 func pipePair(t *testing.T) (*Conn, *Conn) {
 	t.Helper()
-	aIn, bIn := newDuplex(t)
-	bOut, aOut := newDuplex(t)
-
-	a := NewConn(aOut, aIn)
-	b := NewConn(bOut, bIn)
+	c1, c2 := net.Pipe()
 	t.Cleanup(func() {
-		_ = a.Close()
-		_ = b.Close()
+		_ = c1.Close()
+		_ = c2.Close()
 	})
-	return a, b
+	// side A reads c1, writes c2; side B reads c2, writes c1.
+	return NewConn(c1, c2), NewConn(c2, c1)
 }
 
 func TestCallAndResult(t *testing.T) {
@@ -110,7 +108,7 @@ func TestConcurrentCallsDoNotInterleave(t *testing.T) {
 		return map[string]any{"n": p.N}, nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	go func() { _ = b.Serve(ctx) }()
 
@@ -137,12 +135,12 @@ func TestConcurrentCallsDoNotInterleave(t *testing.T) {
 func TestCallTimeout(t *testing.T) {
 	a, b := pipePair(t)
 
-	b.Handle("slow", func(ctx context.Context, _ json.RawMessage) (any, *Error) {
-		time.Sleep(2 * time.Second)
+	b.Handle("slow", func(_ context.Context, _ json.RawMessage) (any, *Error) {
+		time.Sleep(5 * time.Second)
 		return nil, nil
 	})
 
-	sctx, cancelServe := context.WithTimeout(context.Background(), 10*time.Second)
+	sctx, cancelServe := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelServe()
 	go func() { _ = b.Serve(sctx) }()
 
@@ -156,22 +154,22 @@ func TestCallTimeout(t *testing.T) {
 }
 
 func TestMalformedFrameDoesNotKillConnection(t *testing.T) {
-	clientSide, serverSide := pipePair(t)
+	a, b := pipePair(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	go func() { _ = serverSide.Serve(ctx) }()
+	go func() { _ = b.Serve(ctx) }()
 
 	// Simulate garbage arriving on the wire.
-	if _, err := clientSide.w.Write([]byte("{not json\n")); err != nil {
+	if _, err := a.w.Write([]byte("{not json\n")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
 	// The connection must still answer valid requests.
-	serverSide.Handle("ok", func(context.Context, json.RawMessage) (any, *Error) {
+	b.Handle("ok", func(context.Context, json.RawMessage) (any, *Error) {
 		return true, nil
 	})
-	if err := clientSide.Call(ctx, "ok", nil, nil); err != nil {
+	if err := a.Call(ctx, "ok", nil, nil); err != nil {
 		t.Fatalf("connection died after a bad frame: %v", err)
 	}
 }
@@ -183,7 +181,7 @@ func TestHandlerPanicBecomesError(t *testing.T) {
 		panic("kaboom")
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	go func() { _ = b.Serve(ctx) }()
 

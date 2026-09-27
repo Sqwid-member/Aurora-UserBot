@@ -193,7 +193,7 @@ func TestEventDeliveryAndHostAPIFromPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.Emit("message.new", proto.Message{Text: "hi", PeerID: 5, MessageID: 9})
+	h.Emit("message.new", proto.Message{Text: "hi", PeerID: 5, ID: 9})
 	h.Emit("not.subscribed", map[string]string{"ignored": "yes"})
 	h.Emit("core.start", map[string]any{})
 
