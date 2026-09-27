@@ -1,0 +1,29 @@
+{
+  "name": "pulse",
+  "version": "1.0.0",
+  "description": "Монітор живості: щотикує, рахує апдейти й показує стан плагінів у панелі. Приклад плагіна на Lua.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "lua",
+  "tags": ["example", "lua", "monitoring"],
+  "runtime": {
+    "command": "lua",
+    "args": ["pulse.lua"]
+  },
+  "events": ["core.start", "core.stop", "session.started", "session.ended", "message.new"],
+  "commands": [
+    {
+      "name": "pulse",
+      "usage": "pulse",
+      "description": "Показує лічильники плагіна",
+      "aliases": ["пульс"]
+    }
+  ],
+  "permissions": {
+    "tg": ["send"]
+  },
+  "limits": {
+    "memory_mb": 32,
+    "idle_timeout_sec": 1800
+  }
+}

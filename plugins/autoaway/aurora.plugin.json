@@ -1,0 +1,28 @@
+{
+  "name": "autoaway",
+  "version": "1.0.0",
+  "description": "Автоматично встановлює «Незаймай» після N хвилин тиші. Приклад плагіна на Node.js.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "node",
+  "tags": ["example", "node", "automation"],
+  "runtime": {
+    "command": "node",
+    "args": ["autoaway.mjs"]
+  },
+  "events": ["core.start", "message.new", "message.edited"],
+  "commands": [
+    {
+      "name": "away",
+      "usage": "away [хвилин]",
+      "description": "Увімкнути або вимкнути авто-статус",
+      "aliases": ["авто"]
+    }
+  ],
+  "permissions": {
+    "tg": ["send", "resolve"]
+  },
+  "limits": {
+    "memory_mb": 96
+  }
+}

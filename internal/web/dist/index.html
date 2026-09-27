@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0f17">
+<title>Aurora — панель керування</title>
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🌌</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🌌</span>
+    <div>
+      <div class="brand-name">Aurora</div>
+      <div class="brand-sub" id="brand-sub">v{{VERSION}}</div>
+    </div>
+  </div>
+  <div class="state-pill" id="state-pill" data-state="offline">
+    <span class="dot"></span><span id="state-text">offline</span>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="status" role="tab">Статус</button>
+  <button class="tab" data-tab="plugins" role="tab">Плагіни</button>
+  <button class="tab" data-tab="auth" role="tab">Вхід</button>
+  <button class="tab" data-tab="chat" role="tab">Чат</button>
+  <button class="tab" data-tab="logs" role="tab">Логи</button>
+  <button class="tab" data-tab="settings" role="tab">Налаштування</button>
+</nav>
+
+<main>
+  <!-- STATUS -->
+  <section class="panel active" id="panel-status">
+    <div class="grid stat-grid" id="stat-grid"></div>
+
+    <h2>Обліковий запис</h2>
+    <div class="card" id="account-card">
+      <div class="muted">Ядро ще не авторизоване. Відкрийте вкладку «Вхід».</div>
+    </div>
+
+    <h2>Події</h2>
+    <div class="card feed" id="event-feed">
+      <div class="muted">Очікування подій…</div>
+    </div>
+  </section>
+
+  <!-- PLUGINS -->
+  <section class="panel" id="panel-plugins">
+    <div class="toolbar">
+      <input id="plugin-filter" placeholder="Фільтр…" autocomplete="off">
+      <button id="plugin-install" class="ghost">+ Встановити</button>
+    </div>
+    <div class="plugin-list" id="plugin-list"></div>
+
+    <h2>Команди</h2>
+    <div class="card" id="command-list"><div class="muted">Команди з’являться тут.</div></div>
+  </section>
+
+  <!-- AUTH -->
+  <section class="panel" id="panel-auth">
+    <div class="card">
+      <h2>Авторизація</h2>
+      <div id="auth-body"><div class="muted">Перевіряю…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Сесія</h2>
+      <div id="session-body"><div class="muted">Перевіряю…</div></div>
+    </div>
+  </section>
+
+  <!-- CHAT -->
+  <section class="panel" id="panel-chat">
+    <div class="card">
+      <h2>Надіслати повідомлення</h2>
+      <input id="chat-peer" placeholder="@username, +380…, -100… або me" autocomplete="off">
+      <textarea id="chat-text" rows="4" placeholder="Текст…"></textarea>
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="chat-silent"> без звуку</label>
+        <label class="chk"><input type="checkbox" id="chat-nopreview"> без прев’ю</label>
+        <button id="chat-send" class="primary">Надіслати</button>
+      </div>
+    </div>
+    <div class="card" id="chat-out"><div class="muted">Тут з’явиться результат.</div></div>
+  </section>
+
+  <!-- LOGS -->
+  <section class="panel" id="panel-logs">
+    <div class="toolbar">
+      <label class="chk"><input type="checkbox" id="log-follow" checked> стежити</label>
+      <button id="log-clear" class="ghost">Очистити</button>
+    </div>
+    <div class="logs" id="log-body"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="panel-settings">
+    <div class="card">
+      <h2>Налаштування</h2>
+      <div id="settings-body" class="muted">Завантаження…</div>
+      <div class="row end">
+        <button id="settings-save" class="primary">Зберегти</button>
+        <button id="settings-restart" class="ghost">Перезапустити ядро</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts" class="toasts"></div>
+
+<dialog id="dlg-install">
+  <form method="dialog">
+    <h3>Встановити плагін</h3>
+    <p class="muted">Вставте git-URL репозиторію. Aurora зробить <code>git clone</code> у каталог плагінів.</p>
+    <input id="install-url" placeholder="https://github.com/user/aurora-plugin-x" autocomplete="off">
+    <label class="muted small">Ім’я (необов’язково)</label>
+    <input id="install-name" placeholder="auto — з aurora.plugin.json" autocomplete="off">
+    <menu>
+      <button value="cancel" class="ghost">Скасувати</button>
+      <button value="ok" id="install-ok" class="primary">Встановити</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="dlg-session">
+  <form method="dialog">
+    <h3>Імпортувати сесію</h3>
+    <p class="muted">Вставте StringSession від Telethon/Pyrogram — авторизація перенесеться без SMS.</p>
+    <textarea id="session-str" rows="4" placeholder="1BVts..."></textarea>
+    <menu>
+      <button value="cancel" class="ghost">Скасувати</button>
+      <button value="ok" class="primary">Імпортувати</button>
+    </menu>
+  </form>
+</dialog>
+
+<footer class="foot">
+  <span>{{VERSION}}</span> · <span id="foot-build">{{BUILT}}</span> · <button id="foot-token" class="link">показати токен</button>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

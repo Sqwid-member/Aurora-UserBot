@@ -1,0 +1,360 @@
+package plugins
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/aurora/aurora/internal/ipc"
+	"github.com/aurora/aurora/internal/logx"
+	"github.com/aurora/aurora/internal/proto"
+)
+
+const (
+	maxHTTPBody = 1 << 20 // 1 MiB
+	settingsNS  = "plugin:"
+)
+
+// bindAPI registers every host method on a freshly started plugin connection.
+//
+// Every method re-checks the plugin's manifest permissions, because a plugin
+// is just an untrusted process: it can write anything it likes to its own
+// stdout, and the only real barrier is what the host agrees to do on its
+// behalf.
+func (h *Host) bindAPI(p *Instance) {
+	m := p.Manifest
+	conn := func() *ipc.Conn {
+		p.mu.RLock()
+		defer p.mu.RUnlock()
+		return p.conn
+	}
+	if c := conn(); c == nil {
+		return
+	}
+	c := conn()
+	denied := func(cap string) *ipc.Error {
+		return ipc.NewError(ipc.CodeForbidden, "plugin %q lacks the %q permission", m.Name, cap)
+	}
+	notReady := func() *ipc.Error {
+		return ipc.NewError(ipc.CodeUnavailable, "telegram session is not ready yet")
+	}
+
+	// ---- logging -------------------------------------------------------
+	c.Handle("log", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.LogRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		lvl, ok := logx.ParseLevel(req.Level)
+		if !ok {
+			lvl = logx.LevelInfo
+		}
+		p.log.Log(lvl, req.Msg)
+		return map[string]any{"ok": true}, nil
+	})
+
+	// ---- shared key-value store ---------------------------------------
+	c.Handle("kv.get", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		if req.Key == "" {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "key is required")
+		}
+		value, found := h.kv.GetRaw(req.Key)
+		return proto.KVResult{Value: value, Found: found}, nil
+	})
+	c.Handle("kv.set", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		if req.Key == "" {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "key is required")
+		}
+		if err := h.kv.Set(req.Key, req.Value); err != nil {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "%v", err)
+		}
+		return map[string]any{"ok": true}, nil
+	})
+	c.Handle("kv.delete", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		h.kv.Delete(req.Key)
+		return map[string]any{"ok": true}, nil
+	})
+	c.Handle("kv.keys", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		return map[string]any{"keys": h.kv.Keys(req.Key)}, nil
+	})
+
+	// ---- plugin-private settings --------------------------------------
+	c.Handle("settings.get", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		value, found := h.kv.GetRaw(settingsNS + m.Name + ":" + req.Key)
+		return proto.KVResult{Value: value, Found: found}, nil
+	})
+	c.Handle("settings.set", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		if err := h.kv.Set(settingsNS+m.Name+":"+req.Key, req.Value); err != nil {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "%v", err)
+		}
+		return map[string]any{"ok": true}, nil
+	})
+
+	// ---- config (opt-in) ----------------------------------------------
+	c.Handle("config.get", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		if !m.Permissions.Config {
+			return nil, denied("config")
+		}
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		v, ok := h.services.ConfigValue(req.Key)
+		return proto.KVResult{Value: toRaw(v), Found: ok}, nil
+	})
+	c.Handle("config.set", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		if !m.Permissions.Config {
+			return nil, denied("config")
+		}
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		return nil, ipc.NewError(ipc.CodeInvalidRequest, "config.set is not supported; edit config.json instead")
+	})
+
+	// ---- telegram ------------------------------------------------------
+	c.Handle("tg.get_me", func(ctx context.Context, _ json.RawMessage) (any, *ipc.Error) {
+		if !h.services.Ready() {
+			return nil, notReady()
+		}
+		u, err := h.services.GetMe(ctx)
+		if err != nil {
+			return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
+		}
+		return u, nil
+	})
+	c.Handle("tg.send", func(ctx context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		if !m.HasCapability(CapSend) {
+			return nil, denied("tg.send")
+		}
+		if !h.services.Ready() {
+			return nil, notReady()
+		}
+		var req proto.SendRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(req.Text) == "" {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "text is required")
+		}
+		res, err := h.services.Send(ctx, req)
+		if err != nil {
+			return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
+		}
+		return res, nil
+	})
+	c.Handle("tg.history", func(ctx context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		if !m.HasCapability(CapRead) {
+			return nil, denied("tg.history")
+		}
+		if !h.services.Ready() {
+			return nil, notReady()
+		}
+		var req struct {
+			Peer  string `json:"peer"`
+			Limit int    `json:"limit"`
+		}
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		if req.Limit <= 0 || req.Limit > 100 {
+			req.Limit = 20
+		}
+		msgs, err := h.services.History(ctx, req.Peer, req.Limit)
+		if err != nil {
+			return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
+		}
+		return map[string]any{"messages": msgs}, nil
+	})
+	c.Handle("tg.resolve", func(ctx context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		if !m.HasCapability(CapResolve) {
+			return nil, denied("tg.resolve")
+		}
+		if !h.services.Ready() {
+			return nil, notReady()
+		}
+		var req proto.KVRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		info, err := h.services.Resolve(ctx, req.Key)
+		if err != nil {
+			return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
+		}
+		return info, nil
+	})
+
+	// ---- control panel --------------------------------------------------
+	c.Handle("ui.notify", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.NotifyRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		if req.Level == "" {
+			req.Level = "info"
+		}
+		h.services.Notify(req.Title, req.Text, req.Level)
+		return map[string]any{"ok": true}, nil
+	})
+
+	// ---- outbound HTTP (opt-in) -----------------------------------------
+	c.Handle("http.request", func(ctx context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		if !m.Permissions.Net {
+			return nil, denied("net")
+		}
+		var req proto.HTTPRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		return doHTTP(ctx, req)
+	})
+
+	// ---- events and introspection ---------------------------------------
+	c.Handle("event.subscribe", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req proto.SubscribeRequest
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		for _, n := range req.Names {
+			if n == "*" {
+				m.Events = append(m.Events, "*")
+				break
+			}
+			m.Events = append(m.Events, n)
+		}
+		return map[string]any{"ok": true, "events": m.Events}, nil
+	})
+	c.Handle("core.info", func(_ context.Context, _ json.RawMessage) (any, *ipc.Error) {
+		return map[string]any{
+			"version":  h.opts.Version,
+			"protocol": ipc.ProtocolVersion,
+			"plugin":   m.Name,
+			"methods":  HostAPIMethods,
+			"events":   proto.AllEvents,
+			"pid":      p.pid(),
+		}, nil
+	})
+}
+
+func (p *Instance) pid() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.cmd != nil && p.cmd.Process != nil {
+		return p.cmd.Process.Pid
+	}
+	return 0
+}
+
+func decode(raw json.RawMessage, v any) *ipc.Error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		return ipc.NewError(ipc.CodeInvalidParams, "%v", err)
+	}
+	return nil
+}
+
+func toRaw(v any) json.RawMessage {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// doHTTP performs a bounded outbound request on behalf of a plugin.
+func doHTTP(ctx context.Context, req proto.HTTPRequest) (any, *ipc.Error) {
+	u, err := url.Parse(req.URL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, ipc.NewError(ipc.CodeInvalidParams, "invalid url")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, ipc.NewError(ipc.CodeForbidden, "only http and https are allowed")
+	}
+	timeout := time.Duration(req.Timeout) * time.Second
+	if timeout <= 0 || timeout > 30*time.Second {
+		timeout = 10 * time.Second
+	}
+	rctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	method := strings.ToUpper(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	var body io.Reader
+	if req.Body != "" {
+		body = strings.NewReader(req.Body)
+	}
+	hreq, err := http.NewRequestWithContext(rctx, method, req.URL, body)
+	if err != nil {
+		return nil, ipc.NewError(ipc.CodeInvalidParams, "%v", err)
+	}
+	for k, v := range req.Headers {
+		hreq.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(hreq)
+	if err != nil {
+		return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxHTTPBody+1))
+	if err != nil {
+		return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
+	}
+	truncated := false
+	if len(raw) > maxHTTPBody {
+		raw = raw[:maxHTTPBody]
+		truncated = true
+	}
+	headers := make(map[string]string, 4)
+	for k := range resp.Header {
+		headers[strings.ToLower(k)] = resp.Header.Get(k)
+	}
+	return proto.HTTPResult{
+		Status:  resp.StatusCode,
+		Headers: headers,
+		Body:    string(raw),
+		Trunc:   truncated,
+	}, nil
+}
+
+// describe renders a plugin for CLI help.
+func describe(m *Manifest) string {
+	return fmt.Sprintf("%s %s (%s) — %s", m.Name, orDefault(m.Version, "0"), orDefault(m.Language, "?"), orDefault(m.Description, "no description"))
+}

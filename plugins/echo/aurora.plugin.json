@@ -1,0 +1,30 @@
+{
+  "name": "echo",
+  "version": "1.0.0",
+  "description": "Ехо-бот: відповідає на «/echo <текст>» у приватних чатах. Показує, як писати плагін на Python.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["example", "python"],
+  "runtime": {
+    "command": "python3",
+    "args": ["echo.py"]
+  },
+  "events": ["message.new", "core.start"],
+  "commands": [
+    {
+      "name": "echo",
+      "usage": "echo <текст>",
+      "description": "Повторює текст у цьому чаті",
+      "aliases": ["ехо"],
+      "in_chat": true
+    }
+  ],
+  "permissions": {
+    "tg": ["send"]
+  },
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}

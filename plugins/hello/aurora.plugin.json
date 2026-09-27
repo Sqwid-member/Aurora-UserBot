@@ -1,0 +1,27 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "description": "Мінімальний плагін на Go з офіційним SDK. Тут видно весь життєвий цикл: handshake, події, команди, логи.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "go",
+  "tags": ["example", "go", "sdk"],
+  "runtime": {
+    "command": "./hello"
+  },
+  "events": ["core.start", "session.started", "message.new"],
+  "commands": [
+    {
+      "name": "hello",
+      "usage": "hello [ім'я]",
+      "description": "Привітати тебе",
+      "aliases": ["hi", "привіт"]
+    }
+  ],
+  "permissions": {
+    "tg": ["send", "read"]
+  },
+  "limits": {
+    "memory_mb": 48
+  }
+}

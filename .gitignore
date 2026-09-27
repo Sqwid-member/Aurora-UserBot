@@ -1,0 +1,20 @@
+# build output
+/aurora
+/dist/
+/aurora.db
+*.tar.gz
+
+# plugin build artifacts
+plugins/*/hello
+plugins/*/__pycache__/
+
+# local data
+/data/
+*.corrupt
+*.tmp
+
+# editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
