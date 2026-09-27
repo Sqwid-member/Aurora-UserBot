@@ -49,11 +49,11 @@ const (
 // Message is a JSON-RPC 2.0 frame. A frame with an ID is a request, without
 // an ID it is a notification.
 type Message struct {
-	JSONRPC string          `json:"jsonrpc"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *Error          `json:"error,omitempty"`
+	JSONRPC string           `json:"jsonrpc"`
+	Method  string           `json:"method,omitempty"`
+	Params  json.RawMessage  `json:"params,omitempty"`
+	Result  json.RawMessage  `json:"result,omitempty"`
+	Error   *Error           `json:"error,omitempty"`
 	ID      *json.RawMessage `json:"id,omitempty"`
 }
 

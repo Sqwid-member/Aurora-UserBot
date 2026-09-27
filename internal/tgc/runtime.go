@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -167,18 +168,21 @@ func (r *Runtime) Run(ctx context.Context) error {
 	var sink telegram.UpdateHandler = telegram.UpdateHandlerFunc(r.handleUpdates)
 
 	client := telegram.NewClient(r.opts.AppID, r.opts.AppHash, telegram.Options{
-		Resolver:     resolver,
+		Resolver: resolver,
 		SessionStorage: &session.FileStorage{
 			Path: r.opts.SessionPath,
 		},
 		UpdateHandler: sink,
 		NoUpdates:     r.opts.NoUpdates,
 		Device: telegram.DeviceConfig{
-			DeviceName:     r.opts.DeviceName,
-			DeviceModel:    r.opts.DeviceModel,
+			// gotd has no separate "device name" field, so the name and model
+			// travel together in DeviceModel — that is what shows up in
+			// Settings → Devices on the phone.
+			DeviceModel:    deviceModel(r.opts.DeviceName, r.opts.DeviceModel),
 			SystemVersion:  r.opts.DeviceSystem,
 			AppVersion:     r.opts.DeviceVersion,
 			SystemLangCode: r.opts.DeviceLanguage,
+			LangCode:       r.opts.DeviceLanguage,
 		},
 		EnablePFS: r.opts.PFS,
 		OnConnectionState: func(s telegram.ConnectionState) {
@@ -488,7 +492,7 @@ func (r *Runtime) Send(ctx context.Context, req proto.SendRequest) (proto.SendRe
 	}
 
 	var (
-		upd tg.UpdatesClass
+		upd  tg.UpdatesClass
 		err2 error
 	)
 	switch strings.ToLower(req.ParseMode) {
@@ -558,6 +562,7 @@ func (r *Runtime) History(ctx context.Context, ref string, limit int) ([]proto.M
 
 // peerAdapter bridges peers.Manager to the message package resolver interface.
 type peerAdapter struct{ m *peers.Manager }
+
 func (a peerAdapter) ResolveDomain(ctx context.Context, domain string) (tg.InputPeerClass, error) {
 	p, err := a.m.ResolveDomain(ctx, domain)
 	if err != nil {
@@ -691,7 +696,7 @@ func (r *Runtime) lookup(id int64) (proto.PeerInfo, bool) {
 	r.namesMu.RLock()
 	defer r.namesMu.RUnlock()
 	info, ok := r.names[id]
-	return ok, ok
+	return info, ok
 }
 
 // firstMessage digs the sent message out of an updates result.
@@ -704,7 +709,8 @@ func firstMessage(u tg.UpdatesClass) (*tg.Message, bool) {
 	case *tg.UpdateShort:
 		return scanUpdates([]tg.UpdateClass{v.Update})
 	case *tg.UpdateShortSentMessage:
-		return &tg.Message{ID: v.ID, PeerID: &tg.PeerUser{UserID: v.UserID}, Date: v.Date, Out: true}, true
+		// UpdateShortSentMessage carries no peer, only the new message id.
+		return &tg.Message{ID: v.ID, Date: v.Date, Out: true}, true
 	default:
 		return nil, false
 	}
@@ -742,7 +748,11 @@ func (r *Runtime) resolver() (dcs.Resolver, error) {
 
 	opts := dcs.PlainOptions{}
 	if s := strings.TrimSpace(r.opts.Socks5); s != "" {
-		dialer, err := proxy.FromURL(s, proxy.Direct)
+		u, err := url.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("socks5: %w", err)
+		}
+		dialer, err := proxy.FromURL(u, proxy.Direct)
 		if err != nil {
 			return nil, fmt.Errorf("socks5: %w", err)
 		}
@@ -798,6 +808,21 @@ func maskPhone(p string) string {
 		return "****"
 	}
 	return "***" + p[len(p)-4:]
+}
+
+// deviceModel folds the device name into the model string.
+func deviceModel(name, model string) string {
+	name, model = strings.TrimSpace(name), strings.TrimSpace(model)
+	switch {
+	case name == "" && model == "":
+		return ""
+	case name == "":
+		return model
+	case model == "":
+		return name
+	default:
+		return name + " (" + model + ")"
+	}
 }
 
 func errString(err error) string {

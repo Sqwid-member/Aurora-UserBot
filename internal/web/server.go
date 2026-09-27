@@ -25,10 +25,10 @@ import (
 // AuthState is the login state the panel renders.
 type AuthState struct {
 	State    proto.AuthStep `json:"step"`
-	Phone    string       `json:"phone,omitempty"`
-	HasHint  bool         `json:"hint"`
-	Message  string       `json:"message,omitempty"`
-	SignedIn bool         `json:"signed_in"`
+	Phone    string         `json:"phone,omitempty"`
+	HasHint  bool           `json:"hint"`
+	Message  string         `json:"message,omitempty"`
+	SignedIn bool           `json:"signed_in"`
 }
 
 // Backend is everything the control panel needs from the core.

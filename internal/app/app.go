@@ -34,13 +34,13 @@ import (
 
 // App is the assembled Aurora core.
 type App struct {
-	Paths paths.Layout
-	Cfg   *config.Store
-	Log   *logx.Logger
-	KV    *kv.Store
+	Paths   paths.Layout
+	Cfg     *config.Store
+	Log     *logx.Logger
+	KV      *kv.Store
 	Plugins *plugins.Host
-	TG    *tgc.Runtime
-	Web   *web.Server
+	TG      *tgc.Runtime
+	Web     *web.Server
 
 	startedAt time.Time
 
@@ -102,11 +102,11 @@ func New(layout paths.Layout, level logx.Level, color bool, quiet bool) (*App, e
 
 	a.TG = tgc.New(tgcOptions(cfg, sink, a))
 	a.Plugins = plugins.New(a, pluginDir(layout, cfg), store, sink, plugins.Options{
-		Version:     buildinfo.Version,
-		MemoryMB:    cfg.Get().Plugins.DefaultMemoryMB,
+		Version:      buildinfo.Version,
+		MemoryMB:     cfg.Get().Plugins.DefaultMemoryMB,
 		StartTimeout: time.Duration(cfg.Get().Plugins.StartTimeoutSec) * time.Second,
-		StopGrace:   3 * time.Second,
-		MaxRestarts: 5,
+		StopGrace:    3 * time.Second,
+		MaxRestarts:  5,
 	})
 
 	return a, nil

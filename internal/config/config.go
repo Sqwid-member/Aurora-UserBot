@@ -136,16 +136,16 @@ func Default() *Config {
 			OpenBrowser: true,
 		},
 		Runtime: Runtime{
-			LogLevel:    "info",
-			MemLimitMB:  96,
-			EventQueue:  1024,
-			ReadOnly:    false,
+			LogLevel:   "info",
+			MemLimitMB: 96,
+			EventQueue: 1024,
+			ReadOnly:   false,
 		},
 		Plugins: Plugins{
-			StartTimeoutSec:   15,
-			Sandbox:          true,
-			DefaultMemoryMB:   128,
-			Disabled:         []string{},
+			StartTimeoutSec: 15,
+			Sandbox:         true,
+			DefaultMemoryMB: 128,
+			Disabled:        []string{},
 		},
 	}
 }

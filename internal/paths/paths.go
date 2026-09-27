@@ -107,7 +107,7 @@ func (l Layout) PluginDir(name string) string { return filepath.Join(l.Plugins, 
 // Ensure creates every directory with owner-only permissions where it matters.
 func (l Layout) Ensure() error {
 	for _, d := range []struct {
-		dir string
+		dir  string
 		mode os.FileMode
 	}{
 		{l.Home, 0o700},

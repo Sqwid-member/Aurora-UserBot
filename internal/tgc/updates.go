@@ -148,26 +148,39 @@ func (r *Runtime) dispatch(ctx context.Context, ups []tg.UpdateClass) {
 				"peer_id": v.ChannelID, "message_ids": v.Messages, "channel": true,
 			})
 		case *tg.UpdateUserTyping:
+			// UpdateUserTyping is always a private chat, so the peer is the
+			// user themself.
 			r.emit(proto.EventUserTyping, map[string]any{
-				"user_id": v.UserID, "peer_id": v.PeerID, "action": "typing",
+				"user_id": v.UserID, "peer_id": v.UserID, "action": "typing",
 			})
 		case *tg.UpdateChatUserTyping:
+			from, _ := peerOf(v.FromID)
 			r.emit(proto.EventUserTyping, map[string]any{
-				"user_id": v.FromID, "peer_id": v.ChatID, "action": "typing",
+				"user_id": from, "peer_id": v.ChatID, "action": "typing",
 			})
 		case *tg.UpdateChannelParticipant:
 			r.emit(proto.EventChatAction, map[string]any{
 				"channel_id": v.ChannelID, "action": "participant",
 			})
-		case *tg.UpdateChatTitle:
-			r.remember(proto.PeerInfo{ID: v.ChatID, Type: "chat", Title: v.Title})
-			r.emit(proto.EventChatAction, map[string]any{
-				"peer_id": v.ChatID, "action": "title", "title": v.Title,
-			})
 		case *tg.UpdateChannel:
-			r.remember(proto.PeerInfo{ID: v.ChannelID, Type: "channel", Title: v.Title, Username: v.Username})
+			// No title in this update; just remember the id so later
+			// messages from that channel render with a stable peer.
+			r.remember(proto.PeerInfo{
+				ID: v.ChannelID, Type: "channel", Title: "id:" + itoa(v.ChannelID),
+			})
 		case *tg.UpdateUserName:
-			r.remember(proto.PeerInfo{ID: v.UserID, Type: "user", Title: v.FirstName, Username: v.Username})
+			prev, _ := r.lookup(v.UserID)
+			info := proto.PeerInfo{
+				ID:    v.UserID,
+				Type:  "user",
+				Title: strings.TrimSpace(v.FirstName + " " + v.LastName),
+			}
+			if u := activeUsername(v.Usernames); u != "" {
+				info.Username = u
+			} else {
+				info.Username = prev.Username
+			}
+			r.remember(info)
 		case *tg.UpdateUserStatus:
 			r.emit(proto.EventChatAction, map[string]any{
 				"peer_id": v.UserID, "action": "status", "status": v.Status.String(),
@@ -175,11 +188,22 @@ func (r *Runtime) dispatch(ctx context.Context, ups []tg.UpdateClass) {
 		case *tg.UpdateReadHistoryInbox:
 			// Cheap signal that a human is active; plugins like presence
 			// trackers live on this.
+			id, _ := peerOf(v.Peer)
 			r.emit(proto.EventChatAction, map[string]any{
-				"peer_id": v.PeerID, "action": "read",
+				"peer_id": id, "action": "read",
 			})
 		}
 	}
+}
+
+// activeUsername picks the first active username from the list Telegram sends.
+func activeUsername(list []tg.Username) string {
+	for _, u := range list {
+		if u.Active {
+			return u.Username
+		}
+	}
+	return ""
 }
 
 func (r *Runtime) selfID() int64 {
@@ -213,18 +237,18 @@ func (r *Runtime) toMessage(_ context.Context, m *tg.Message) proto.Message {
 	}
 
 	out := proto.Message{
-		ID:        m.ID,
-		PeerID:    peerID,
-		PeerType:  peerType,
-		PeerTitle: info.Title,
-		FromID:    fromID,
-		FromName:  fromName,
-		Text:      m.Message,
-		Date:      int64(m.Date),
-		Out:       m.Out,
-		IsPrivate: peerType == "user",
+		ID:         m.ID,
+		PeerID:     peerID,
+		PeerType:   peerType,
+		PeerTitle:  info.Title,
+		FromID:     fromID,
+		FromName:   fromName,
+		Text:       m.Message,
+		Date:       int64(m.Date),
+		Out:        m.Out,
+		IsPrivate:  peerType == "user",
 		MentionsMe: r.mentionsMe(m),
-		Media:     mediaName(m),
+		Media:      mediaName(m),
 	}
 	if out.FromID == 0 {
 		out.FromID = peerID
@@ -239,8 +263,7 @@ func (r *Runtime) toMessage(_ context.Context, m *tg.Message) proto.Message {
 // mentionsMe is a cheap heuristic: Telegram already tells us via the
 // Mentioned flag, so no entity parsing is needed.
 func (r *Runtime) mentionsMe(m *tg.Message) bool {
-	mentioned, ok := m.GetMentioned()
-	return ok && mentioned
+	return m.GetMentioned()
 }
 
 func peerOf(p tg.PeerClass) (int64, string) {

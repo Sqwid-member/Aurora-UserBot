@@ -47,20 +47,20 @@ var AllEvents = []string{
 // Message is the canonical shape of a Telegram message as seen by plugins
 // and by the control panel.
 type Message struct {
-	ID         int     `json:"message_id"`
-	PeerID     int64   `json:"peer_id"`
-	PeerType   string  `json:"peer_type"` // user | chat | channel
-	PeerTitle  string  `json:"peer_title"`
-	FromID     int64   `json:"from_id"`
-	FromName   string  `json:"from_name"`
-	FromBot    bool    `json:"from_bot"`
-	Text       string  `json:"text"`
-	Date       int64   `json:"date"`
-	Out        bool    `json:"out"`
-	ReplyTo    int     `json:"reply_to,omitempty"`
-	Media      string  `json:"media,omitempty"`
-	IsPrivate  bool    `json:"is_private"`
-	MentionsMe bool    `json:"mentions_me,omitempty"`
+	ID         int    `json:"message_id"`
+	PeerID     int64  `json:"peer_id"`
+	PeerType   string `json:"peer_type"` // user | chat | channel
+	PeerTitle  string `json:"peer_title"`
+	FromID     int64  `json:"from_id"`
+	FromName   string `json:"from_name"`
+	FromBot    bool   `json:"from_bot"`
+	Text       string `json:"text"`
+	Date       int64  `json:"date"`
+	Out        bool   `json:"out"`
+	ReplyTo    int    `json:"reply_to,omitempty"`
+	Media      string `json:"media,omitempty"`
+	IsPrivate  bool   `json:"is_private"`
+	MentionsMe bool   `json:"mentions_me,omitempty"`
 }
 
 // Time returns the message date as a time.Time in local time.
@@ -145,9 +145,9 @@ type SendRequest struct {
 
 // SendResult is the result of tg.send.
 type SendResult struct {
-	ID     int   `json:"id"`
-	PeerID int64 `json:"peer_id"`
-	Date   int64 `json:"date"`
+	ID     int    `json:"id"`
+	PeerID int64  `json:"peer_id"`
+	Date   int64  `json:"date"`
 	Text   string `json:"text,omitempty"`
 }
 
@@ -244,29 +244,29 @@ type SessionState string
 
 // Session states.
 const (
-	StateOffline     SessionState = "offline"
-	StateConnecting  SessionState = "connecting"
-	StateUnauth      SessionState = "unauthorized"
-	StateAuthorized  SessionState = "authorized"
-	StateError       SessionState = "error"
+	StateOffline    SessionState = "offline"
+	StateConnecting SessionState = "connecting"
+	StateUnauth     SessionState = "unauthorized"
+	StateAuthorized SessionState = "authorized"
+	StateError      SessionState = "error"
 )
 
 // Status is the payload behind GET /api/status.
 type Status struct {
-	Core        string            `json:"core"`
-	Version     string            `json:"version"`
-	GoVersion   string            `json:"go_version"`
-	Uptime      string            `json:"uptime"`
-	UptimeSec   int64             `json:"uptime_sec"`
-	MemoryMB    float64           `json:"memory_mb"`
-	Goroutines  int               `json:"goroutines"`
-	Session     SessionState      `json:"session"`
-	User        *User             `json:"user,omitempty"`
-	PluginCount int               `json:"plugin_count"`
-	PluginsUp   int               `json:"plugins_running"`
-	Web         WebStatus         `json:"web"`
-	MemLimitMB  int               `json:"mem_limit_mb"`
-	Counters    map[string]int64  `json:"counters,omitempty"`
+	Core        string           `json:"core"`
+	Version     string           `json:"version"`
+	GoVersion   string           `json:"go_version"`
+	Uptime      string           `json:"uptime"`
+	UptimeSec   int64            `json:"uptime_sec"`
+	MemoryMB    float64          `json:"memory_mb"`
+	Goroutines  int              `json:"goroutines"`
+	Session     SessionState     `json:"session"`
+	User        *User            `json:"user,omitempty"`
+	PluginCount int              `json:"plugin_count"`
+	PluginsUp   int              `json:"plugins_running"`
+	Web         WebStatus        `json:"web"`
+	MemLimitMB  int              `json:"mem_limit_mb"`
+	Counters    map[string]int64 `json:"counters,omitempty"`
 }
 
 // WebStatus describes the control panel endpoint.
