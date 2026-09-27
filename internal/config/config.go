@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aurora/aurora/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 )
 
 // Version is the current config schema version.

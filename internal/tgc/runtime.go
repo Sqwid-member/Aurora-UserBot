@@ -24,8 +24,8 @@ import (
 	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/tg"
 
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 // Options configures the Telegram runtime.

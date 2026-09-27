@@ -7,7 +7,7 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 // handleUpdates is the single entry point for every MTProto update.

@@ -39,25 +39,41 @@
 ## Встановлення на Termux
 
 ```console
-$ pkg install curl git
-$ curl -fsSL https://raw.githubusercontent.com/aurora/aurora/main/scripts/install.sh | bash
+$ pkg install curl
+$ curl -fsSL https://raw.githubusercontent.com/Sqwid-member/Aurora-UserBot/main/scripts/install.sh | bash
 ```
 
-Скрипт сам:
+Скрипт:
 
-1. перевірить оточення і поставить лише те, чого бракує;
-2. спробує завантажити готовий бінарник, а якщо немає — збере з вихідного коду;
-3. покладе `~/bin/aurora`, створить `~/.local/share/aurora/`;
-4. скопіює приклади плагінів.
+1. визначає платформу (`android/arm64`, `linux/armv7`, `linux/amd64`, `darwin/*`);
+2. питає в GitHub API про останній реліз і **вантажить готовий бінарник** —
+   на телефоні Go ставити й компілювати не треба;
+3. якщо збірок для твоєї платформи немає — збирає з вихідного коду
+   (`CGO_ENABLED=0`, статичний бінарник);
+4. кладе `~/bin/aurora`, створює `~/.local/share/aurora/`, копіює приклади
+   плагінів і перевіряє, що бінарник взагалі запускається.
 
-Якщо `~/bin` не в `PATH`, скрипт скаже який рядок додати в `~/.bashrc`.
+Корисні змінні:
+
+```console
+$ AURORA_VERSION=v0.1.0  ... | bash   # конкретна версія
+$ AURORA_FORCE_SRC=1      ... | bash   # завжди зібрати з коду
+$ AURORA_REPO=you/fork    ... | bash   # свій форк
+```
+
+Коли `~/bin` не в `PATH`, скрипт скаже який рядок додати в `~/.bashrc`.
 
 ### Звичайний Linux / macOS
 
 ```console
-$ git clone https://github.com/aurora/aurora && cd aurora
+$ git clone https://github.com/Sqwid-member/Aurora-UserBot && cd Aurora-UserBot
 $ make install        # або: go build -o ~/bin/aurora ./cmd/aurora
 ```
+
+### Готові бінарники
+
+Кожен тег `v*` збирає реліз з бінарниками для всіх платформ:
+[Releases](https://github.com/Sqwid-member/Aurora-UserBot/releases).
 
 ---
 

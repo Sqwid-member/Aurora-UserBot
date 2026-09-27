@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aurora/aurora/internal/kv"
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/plugins"
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/kv"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 // fakeServices records what the host asks the "Telegram runtime" to do.

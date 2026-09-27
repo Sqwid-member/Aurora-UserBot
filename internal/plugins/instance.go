@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aurora/aurora/internal/ipc"
-	"github.com/aurora/aurora/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/ipc"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 )
 
 // State is the lifecycle state of a plugin instance.

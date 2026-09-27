@@ -21,15 +21,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aurora/aurora/internal/buildinfo"
-	"github.com/aurora/aurora/internal/config"
-	"github.com/aurora/aurora/internal/kv"
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/paths"
-	"github.com/aurora/aurora/internal/plugins"
-	"github.com/aurora/aurora/internal/proto"
-	"github.com/aurora/aurora/internal/tgc"
-	"github.com/aurora/aurora/internal/web"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/kv"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/web"
 )
 
 // App is the assembled Aurora core.

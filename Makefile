@@ -5,9 +5,9 @@ VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo d
 COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE       ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS    := -s -w \
-	-X github.com/aurora/aurora/internal/buildinfo.Version=$(VERSION) \
-	-X github.com/aurora/aurora/internal/buildinfo.Commit=$(COMMIT) \
-	-X github.com/aurora/aurora/internal/buildinfo.Date=$(DATE)
+	-X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Version=$(VERSION) \
+	-X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Commit=$(COMMIT) \
+	-X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Date=$(DATE)
 
 # Aurora is a server: never link the race detector or coverage in.
 GOFLAGS_BASE := -trimpath

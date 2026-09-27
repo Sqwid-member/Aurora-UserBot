@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aurora/aurora/internal/config"
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/plugins"
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 // AuthState is the login state the panel renders.

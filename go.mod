@@ -1,4 +1,4 @@
-module github.com/aurora/aurora
+module github.com/Sqwid-member/Aurora-UserBot
 
 go 1.26.0
 

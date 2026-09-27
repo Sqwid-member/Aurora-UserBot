@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aurora/aurora/internal/ipc"
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/ipc"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 const (

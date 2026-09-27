@@ -14,7 +14,7 @@
 //	    "context"
 //	    "os"
 //
-//	    "github.com/aurora/aurora-sdk-go/aurora"
+//	    "github.com/Sqwid-member/Aurora-UserBot/sdk/go/aurora"
 //	)
 //
 //	func main() {
@@ -267,6 +267,12 @@ func (p *Plugin) Debugf(f string, a ...any) { p.logf("debug", f, a...) }
 func (p *Plugin) Infof(f string, a ...any)  { p.logf("info", f, a...) }
 func (p *Plugin) Warnf(f string, a ...any)  { p.logf("warn", f, a...) }
 func (p *Plugin) Errorf(f string, a ...any) { p.logf("error", f, a...) }
+
+// Debug, Info, Warn and Error are the same shortcuts without formatting.
+func (p *Plugin) Debug(msg string) { p.Log("debug", msg) }
+func (p *Plugin) Info(msg string)  { p.Log("info", msg) }
+func (p *Plugin) Warn(msg string)  { p.Log("warn", msg) }
+func (p *Plugin) Error(msg string) { p.Log("error", msg) }
 
 // KVGet reads a value from the shared store.
 func (p *Plugin) KVGet(key string, out any) error {

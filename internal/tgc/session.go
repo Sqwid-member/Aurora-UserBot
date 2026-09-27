@@ -12,7 +12,7 @@ import (
 
 	"github.com/gotd/td/session"
 
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 // Telethon string session layout (see Telethon's StringSession):

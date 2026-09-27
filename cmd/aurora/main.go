@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aurora/aurora/internal/app"
-	"github.com/aurora/aurora/internal/buildinfo"
-	"github.com/aurora/aurora/internal/config"
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/paths"
-	"github.com/aurora/aurora/internal/proto"
-	"github.com/aurora/aurora/internal/tgc"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/app"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 )
 
 const usage = `🌌 Aurora — модульний Telegram-юзербот

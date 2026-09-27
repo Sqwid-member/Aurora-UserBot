@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aurora/aurora/internal/buildinfo"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
 )
 
 //go:embed dist

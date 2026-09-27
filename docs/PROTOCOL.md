@@ -318,7 +318,7 @@ newline-delimited JSON-RPC 2.0 через `stdin`/`stdout`. Ніяких спі�
 
 | Мова | SDK | Файл |
 |------|-----|------|
-| Go | `github.com/aurora/aurora-sdk-go/aurora` | [`sdk/go/aurora/sdk.go`](../sdk/go/aurora/sdk.go) |
+| Go | `github.com/Sqwid-member/Aurora-UserBot/sdk/go/aurora` | [`sdk/go/aurora/sdk.go`](../sdk/go/aurora/sdk.go) |
 | Python | вбудований у стандартну бібліотеку | [`plugins/echo/echo.py`](../plugins/echo/echo.py) |
 | Node.js | вбудований у стандартну бібліотеку | [`plugins/autoaway/autoaway.mjs`](../plugins/autoaway/autoaway.mjs) |
 | Lua | ~40 рядків encode/decode у прикладі | [`plugins/pulse/pulse.lua`](../plugins/pulse/pulse.lua) |

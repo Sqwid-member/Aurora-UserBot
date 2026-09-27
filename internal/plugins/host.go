@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aurora/aurora/internal/kv"
-	"github.com/aurora/aurora/internal/logx"
-	"github.com/aurora/aurora/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/kv"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 )
 
 // Services is the host functionality exposed to plugins. It is implemented by

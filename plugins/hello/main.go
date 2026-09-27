@@ -3,7 +3,7 @@
 // Build it from this directory:
 //
 //	go mod init hello
-//	go get github.com/aurora/aurora-sdk-go/aurora
+//	go get github.com/Sqwid-member/Aurora-UserBot/sdk/go/aurora
 //	go build -o hello .
 //
 // Or, inside the Aurora repository, where the SDK is available locally:
@@ -20,7 +20,7 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/aurora/aurora-sdk-go/aurora"
+	"github.com/Sqwid-member/Aurora-UserBot/sdk/go/aurora"
 )
 
 var seen atomic.Int64

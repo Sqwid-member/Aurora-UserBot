@@ -1,7 +1,7 @@
-module github.com/aurora/aurora-plugin-hello
+module github.com/Sqwid-member/Aurora-UserBot/plugins/hello
 
 go 1.22
 
-require github.com/aurora/aurora-sdk-go v0.0.0
+require github.com/Sqwid-member/Aurora-UserBot/sdk/go v0.0.0
 
-replace github.com/aurora/aurora-sdk-go => ../../sdk/go
+replace github.com/Sqwid-member/Aurora-UserBot/sdk/go => ../../sdk/go

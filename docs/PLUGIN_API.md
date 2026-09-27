@@ -41,7 +41,7 @@ import (
     "context"
     "os"
 
-    "github.com/aurora/aurora-sdk-go/aurora"
+    "github.com/Sqwid-member/Aurora-UserBot/sdk/go/aurora"
 )
 
 func main() {
