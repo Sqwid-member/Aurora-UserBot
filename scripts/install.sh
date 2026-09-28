@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO="${AURORA_REPO:-Sqwid-member/Aurora-UserBot}"
-VERSION="${AURORA_VERSION:-v2.4.0}"
+VERSION="${AURORA_VERSION:-v2.5.0}"
 DATA_DIR="${AURORA_HOME:-$HOME/.local/share/aurora}"
 
 say()  { printf '\033[35m▚▚▚\033[0m %s\n' "$*"; }
