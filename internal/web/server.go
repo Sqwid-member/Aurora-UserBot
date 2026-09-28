@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -211,7 +212,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
-	mux.Handle("/", staticHandler())
+	mux.Handle("/", staticHandler(s.opts.Token))
 }
 
 func (s *Server) isAllowedHost(hostPort string) bool {
@@ -280,17 +281,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		case authOK:
 			next.ServeHTTP(w, r)
 		case authNeedCookie:
-			http.SetCookie(w, &http.Cookie{
-				Name:     "aurora_token",
-				Value:    s.opts.Token,
-				Path:     "/",
-				HttpOnly: false,
-				SameSite: http.SameSiteLaxMode,
-				MaxAge:   31536000,
-			})
-			next.ServeHTTP(w, r)
-		default:
-			if s.isLocalRequest(r) {
+			if s.opts.Token != "" {
 				http.SetCookie(w, &http.Cookie{
 					Name:     "aurora_token",
 					Value:    s.opts.Token,
@@ -299,11 +290,22 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 					SameSite: http.SameSiteLaxMode,
 					MaxAge:   31536000,
 				})
-				next.ServeHTTP(w, r)
-				return
 			}
-			if r.URL.Path == "/" {
-				serveGate(w, r, s.opts.Token)
+			next.ServeHTTP(w, r)
+		default:
+			// Automatically authenticate and set cookie for local requests, root page, or static files
+			if s.isLocalRequest(r) || r.URL.Path == "/" || !strings.HasPrefix(r.URL.Path, "/api/") {
+				if s.opts.Token != "" {
+					http.SetCookie(w, &http.Cookie{
+						Name:     "aurora_token",
+						Value:    s.opts.Token,
+						Path:     "/",
+						HttpOnly: false,
+						SameSite: http.SameSiteLaxMode,
+						MaxAge:   31536000,
+					})
+				}
+				next.ServeHTTP(w, r)
 				return
 			}
 			if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -323,7 +325,22 @@ func (s *Server) isLocalRequest(r *http.Request) bool {
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		h = host
 	}
-	return h == "127.0.0.1" || h == "::1" || h == "localhost"
+	h = strings.TrimPrefix(strings.TrimSuffix(h, "]"), "[")
+	if h == "127.0.0.1" || h == "::1" || h == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(h)
+	if ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return true
+		}
+		if ip4 := ip.To4(); ip4 != nil {
+			if ip4.IsLoopback() || ip4.IsPrivate() || ip4.IsLinkLocalUnicast() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type authResult int
@@ -729,17 +746,29 @@ func atoi(s string) (int, error) {
 func openBrowser(url string) {
 	var candidates [][]string
 	if runtime.GOOS == "android" || isTermux() {
-		candidates = append(candidates, []string{"termux-open-url", url})
+		candidates = append(candidates,
+			[]string{"termux-open-url", url},
+			[]string{"termux-open", url},
+		)
+		if _, err := os.Stat("/system/bin/am"); err == nil {
+			candidates = append(candidates, []string{"/system/bin/am", "start", "-a", "android.intent.action.VIEW", "-d", url})
+		}
 	}
 	candidates = append(candidates,
 		[]string{"xdg-open", url},
 		[]string{"sensible-browser", url},
+		[]string{"x-www-browser", url},
 		[]string{"open", url},
 	)
 	for _, c := range candidates {
 		if path, err := sysx.LookPath(c[0]); err == nil {
 			_ = sysx.Command(path, c[1:]...).Start()
 			return
+		} else if strings.HasPrefix(c[0], "/") {
+			if _, err := os.Stat(c[0]); err == nil {
+				_ = sysx.Command(c[0], c[1:]...).Start()
+				return
+			}
 		}
 	}
 }

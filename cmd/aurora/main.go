@@ -118,7 +118,7 @@ func run(args []string) error {
 		return cmdSetup(layout)
 	case "login":
 		return cmdLogin(layout, args)
-	case "panel":
+	case "panel", "web", "gui", "open":
 		return cmdPanel(layout)
 	case "send":
 		return cmdSend(layout, args)
@@ -311,17 +311,29 @@ func cmdLoginWeb(layout paths.Layout) error {
 func openBrowserCLI(url string) {
 	var candidates [][]string
 	if runtime.GOOS == "android" || paths.IsTermux() {
-		candidates = append(candidates, []string{"termux-open-url", url})
+		candidates = append(candidates,
+			[]string{"termux-open-url", url},
+			[]string{"termux-open", url},
+		)
+		if _, err := os.Stat("/system/bin/am"); err == nil {
+			candidates = append(candidates, []string{"/system/bin/am", "start", "-a", "android.intent.action.VIEW", "-d", url})
+		}
 	}
 	candidates = append(candidates,
 		[]string{"xdg-open", url},
 		[]string{"sensible-browser", url},
+		[]string{"x-www-browser", url},
 		[]string{"open", url},
 	)
 	for _, c := range candidates {
 		if path, err := sysx.LookPath(c[0]); err == nil {
 			_ = sysx.Command(path, c[1:]...).Start()
 			return
+		} else if strings.HasPrefix(c[0], "/") {
+			if _, err := os.Stat(c[0]); err == nil {
+				_ = sysx.Command(c[0], c[1:]...).Start()
+				return
+			}
 		}
 	}
 }
@@ -342,10 +354,21 @@ func cmdPanel(layout paths.Layout) error {
 		host = "127.0.0.1"
 	}
 	url := fmt.Sprintf("http://%s:%d/?token=%s", host, c.Web.Port, c.Web.Token)
-	fmt.Println(url)
-	if runtime.GOOS != "android" {
-		fmt.Fprintln(os.Stderr, "\nВідкрийте посилання у браузері. Ядро має бути запущене (aurora run).")
+
+	if pid, running := checkPidRunning(layout.PidFile()); running {
+		fmt.Printf("✓ Aurora працює у фоні (PID %d)\n", pid)
+	} else {
+		fmt.Println("→ Запускаю фоновий процес Aurora для веб-панелі...")
+		if err := cmdStart(layout); err != nil {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
+
+	fmt.Println("\n🌐 Відкриваю веб-панель керування:")
+	fmt.Printf("   %s\n", url)
+	fmt.Println("   (Токен введено автоматично)")
+	openBrowserCLI(url)
 	return nil
 }
 
@@ -786,7 +809,11 @@ func cmdStart(layout paths.Layout) error {
 	fmt.Printf("✓ Aurora запущена у фоні (PID %d)\n", cmd.Process.Pid)
 	fmt.Printf("  Логи:    aurora logs\n")
 	fmt.Printf("  Статус:  aurora status\n")
-	fmt.Printf("  Панель:  aurora panel\n")
+	host := c.Web.Host
+	if host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	fmt.Printf("  Панель:  http://%s:%d/?token=%s\n", host, c.Web.Port, c.Web.Token)
 	fmt.Printf("  Зупинка: aurora stop\n")
 	return nil
 }

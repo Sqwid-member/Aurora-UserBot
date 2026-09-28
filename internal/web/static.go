@@ -2,6 +2,7 @@ package web
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -14,12 +15,8 @@ import (
 //go:embed dist
 var panelFS embed.FS
 
-// staticHandler serves the embedded single-page panel.
-//
-// The panel is fully self-contained: no CDN, no fonts, no analytics. It works
-// on a phone with the radio off, which is the whole point of running a userbot
-// from Termux.
-func staticHandler() http.Handler {
+// staticHandler serves the embedded single-page panel with token auto-injection.
+func staticHandler(token string) http.Handler {
 	sub, err := fs.Sub(panelFS, "dist")
 	if err != nil {
 		panic(err)
@@ -40,18 +37,15 @@ func staticHandler() http.Handler {
 		}
 		if name == "index.html" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			serveIndex(w, sub)
+			serveIndex(w, sub, token)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
 	})
 }
 
-// serveIndex renders the panel shell with build metadata injected.
-//
-// The API token is deliberately NOT injected: it lives in an HttpOnly cookie
-// set at first visit, so the page source is safe to cache and to screenshot.
-func serveIndex(w http.ResponseWriter, sub fs.FS) {
+// serveIndex renders the panel shell with build metadata and authentication token injected.
+func serveIndex(w http.ResponseWriter, sub fs.FS, token string) {
 	body, err := fs.ReadFile(sub, "index.html")
 	if err != nil {
 		http.Error(w, "panel is not built", http.StatusInternalServerError)
@@ -60,13 +54,29 @@ func serveIndex(w http.ResponseWriter, sub fs.FS) {
 	out := string(body)
 	out = strings.ReplaceAll(out, "{{VERSION}}", buildinfo.Version)
 	out = strings.ReplaceAll(out, "{{BUILT}}", time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+
+	if token != "" {
+		inject := fmt.Sprintf(`<script>window.__AURORA_TOKEN__=%q;try{localStorage.setItem("aurora_token",%q);document.cookie="aurora_token="+encodeURIComponent(%q)+"; path=/; max-age=31536000; SameSite=Lax";}catch(e){}</script></head>`, token, token, token)
+		out = strings.Replace(out, "</head>", inject, 1)
+	}
+
 	_, _ = w.Write([]byte(out))
 }
 
-// serveGate renders the sign-in shell. It auto-redirects with token so local users never type it.
+// serveGate renders the sign-in shell. It auto-redirects with token so users never have to type it.
 func serveGate(w http.ResponseWriter, r *http.Request, token string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	if token != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "aurora_token",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: false,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   31536000,
+		})
+	}
 	w.WriteHeader(http.StatusOK)
 	body := strings.ReplaceAll(gateHTML, "{{TOKEN}}", token)
 	_, _ = w.Write([]byte(body))
@@ -123,30 +133,38 @@ code{background:#10131d;padding:2px 6px;border-radius:4px;color:#818cf8;font-siz
   </svg>
 </div>
 <h1>Aurora</h1>
-<p>Введіть токен доступу для керування панеллю.</p>
+<p id="msg">Автоматичний вхід у веб-панель...</p>
 <form onsubmit="return go(event)">
-<input id="t" type="password" placeholder="токен доступу" autocomplete="off" autofocus>
+<input id="t" type="password" placeholder="токен доступу" value="{{TOKEN}}" autocomplete="off" autofocus>
 <button type="submit">Увійти</button>
 </form>
 <p class="hint">
-Токен зберігається у безпечному HttpOnly-cookie.<br>
+Токен підставляється автоматично.<br>
 Або використовуйте посилання: <code>http://127.0.0.1:8420/?token=…</code>
 </p>
 </div>
 <script>
 (function() {
-  var t = "{{TOKEN}}" || localStorage.getItem("aurora_token");
-  if (t && t !== "" && t !== "{{TOKEN}}") {
-    localStorage.setItem("aurora_token", t);
-    location.href = "/?token=" + encodeURIComponent(t);
+  var t = "{{TOKEN}}" || localStorage.getItem("aurora_token") || "";
+  if (t) {
+    try {
+      localStorage.setItem("aurora_token", t);
+      document.cookie = "aurora_token=" + encodeURIComponent(t) + "; path=/; max-age=31536000; SameSite=Lax";
+    } catch(e) {}
+    var el = document.getElementById('t');
+    if (el) el.value = t;
+    location.replace("/?token=" + encodeURIComponent(t));
   }
 })();
 function go(e){
   e.preventDefault();
-  var t=document.getElementById('t').value.trim();
+  var t = (document.getElementById('t').value || "{{TOKEN}}").trim();
   if(!t) return false;
-  localStorage.setItem("aurora_token", t);
-  location.href='/?token='+encodeURIComponent(t);
+  try {
+    localStorage.setItem("aurora_token", t);
+    document.cookie = "aurora_token=" + encodeURIComponent(t) + "; path=/; max-age=31536000; SameSite=Lax";
+  } catch(e) {}
+  location.replace('/?token=' + encodeURIComponent(t));
   return false;
 }
 </script>

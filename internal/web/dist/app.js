@@ -19,21 +19,29 @@
   let timers = null;
 
   // ---------- API Client ----------
-  // Save token from URL if present
+  // Save token from URL or injected global
   try {
-    const urlTok = new URLSearchParams(window.location.search).get("token");
+    const urlTok = new URLSearchParams(window.location.search).get("token") || window.__AURORA_TOKEN__;
     if (urlTok) {
       localStorage.setItem("aurora_token", urlTok);
+      document.cookie = "aurora_token=" + encodeURIComponent(urlTok) + "; path=/; max-age=31536000; SameSite=Lax";
     }
   } catch (e) {}
 
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-    const tok = localStorage.getItem("aurora_token");
+    const tok = localStorage.getItem("aurora_token") || window.__AURORA_TOKEN__;
     if (tok && !headers['Authorization']) headers['Authorization'] = "Bearer " + tok;
     const res = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
-    if (res.status === 401) { location.reload(); throw new Error('unauthorized'); }
+    if (res.status === 401) {
+      const fallbackTok = window.__AURORA_TOKEN__;
+      if (fallbackTok && tok !== fallbackTok) {
+        localStorage.setItem("aurora_token", fallbackTok);
+        location.reload();
+      }
+      throw new Error('unauthorized');
+    }
     const text = await res.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
@@ -964,7 +972,9 @@
   function openStream(path, onMessage) {
     let es;
     const connect = () => {
-      es = new EventSource(path, { withCredentials: true });
+      const tok = localStorage.getItem("aurora_token") || window.__AURORA_TOKEN__;
+      const url = tok ? (path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(tok)) : path;
+      es = new EventSource(url, { withCredentials: true });
       es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch {} };
       es.onerror = () => { es.close(); setTimeout(connect, 4000); };
     };

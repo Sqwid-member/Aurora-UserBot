@@ -95,8 +95,17 @@ func cmdTUI(layout paths.Layout) error {
 				_ = cmdStart(layout)
 				time.Sleep(1 * time.Second)
 			}
-			openBrowserCLI(webURL)
-			fmt.Printf("✓ Відкрито у браузері: %s\n", webURL)
+			client, _ = newDaemonClient(layout)
+			targetURL := ""
+			if client != nil {
+				targetURL = client.baseURL + "/?token=" + client.token
+			}
+			if targetURL == "" {
+				targetURL = webURL
+			}
+			openBrowserCLI(targetURL)
+			fmt.Printf("\n\033[1;32m✓ Відкрито у браузері:\033[0m %s\n", targetURL)
+			fmt.Println("\033[2m  (Токен авторизації підставлено автоматично)\033[0m")
 			pressEnterToContinue(reader)
 		case "3":
 			if running {
