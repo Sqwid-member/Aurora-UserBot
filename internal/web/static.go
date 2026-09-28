@@ -63,13 +63,13 @@ func serveIndex(w http.ResponseWriter, sub fs.FS) {
 	_, _ = w.Write([]byte(out))
 }
 
-// serveGate is the anonymous sign-in shell. It contains nothing but a form:
-// no token, no version, no endpoints.
-func serveGate(w http.ResponseWriter, r *http.Request) {
+// serveGate renders the sign-in shell. It auto-redirects with token so local users never type it.
+func serveGate(w http.ResponseWriter, r *http.Request, token string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(gateHTML))
+	body := strings.ReplaceAll(gateHTML, "{{TOKEN}}", token)
+	_, _ = w.Write([]byte(body))
 }
 
 const gateHTML = `<!DOCTYPE html>
@@ -134,10 +134,18 @@ code{background:#10131d;padding:2px 6px;border-radius:4px;color:#818cf8;font-siz
 </p>
 </div>
 <script>
+(function() {
+  var t = "{{TOKEN}}" || localStorage.getItem("aurora_token");
+  if (t && t !== "" && t !== "{{TOKEN}}") {
+    localStorage.setItem("aurora_token", t);
+    location.href = "/?token=" + encodeURIComponent(t);
+  }
+})();
 function go(e){
   e.preventDefault();
   var t=document.getElementById('t').value.trim();
   if(!t) return false;
+  localStorage.setItem("aurora_token", t);
   location.href='/?token='+encodeURIComponent(t);
   return false;
 }

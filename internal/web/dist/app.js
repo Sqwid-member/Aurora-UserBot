@@ -19,9 +19,19 @@
   let timers = null;
 
   // ---------- API Client ----------
+  // Save token from URL if present
+  try {
+    const urlTok = new URLSearchParams(window.location.search).get("token");
+    if (urlTok) {
+      localStorage.setItem("aurora_token", urlTok);
+    }
+  } catch (e) {}
+
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const tok = localStorage.getItem("aurora_token");
+    if (tok && !headers['Authorization']) headers['Authorization'] = "Bearer " + tok;
     const res = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
     if (res.status === 401) { location.reload(); throw new Error('unauthorized'); }
     const text = await res.text();

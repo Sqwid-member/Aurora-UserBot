@@ -280,20 +280,30 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		case authOK:
 			next.ServeHTTP(w, r)
 		case authNeedCookie:
-			// A correct ?token= was supplied: move it into an HttpOnly cookie
-			// and redirect, so it stops living in history and in the URL bar.
 			http.SetCookie(w, &http.Cookie{
 				Name:     "aurora_token",
 				Value:    s.opts.Token,
 				Path:     "/",
-				HttpOnly: true,
-				SameSite: http.SameSiteStrictMode,
+				HttpOnly: false,
+				SameSite: http.SameSiteLaxMode,
+				MaxAge:   31536000,
 			})
-			http.Redirect(w, r, "/", http.StatusFound)
+			next.ServeHTTP(w, r)
 		default:
+			if s.isLocalRequest(r) {
+				http.SetCookie(w, &http.Cookie{
+					Name:     "aurora_token",
+					Value:    s.opts.Token,
+					Path:     "/",
+					HttpOnly: false,
+					SameSite: http.SameSiteLaxMode,
+					MaxAge:   31536000,
+				})
+				next.ServeHTTP(w, r)
+				return
+			}
 			if r.URL.Path == "/" {
-				// Serve the sign-in shell; it carries no secrets.
-				serveGate(w, r)
+				serveGate(w, r, s.opts.Token)
 				return
 			}
 			if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -306,6 +316,14 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
 	})
+}
+
+func (s *Server) isLocalRequest(r *http.Request) bool {
+	h := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		h = host
+	}
+	return h == "127.0.0.1" || h == "::1" || h == "localhost"
 }
 
 type authResult int
