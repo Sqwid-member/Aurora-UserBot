@@ -12,8 +12,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -23,13 +23,13 @@ import (
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
-	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/kv"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/web"
 )
@@ -150,47 +150,6 @@ func pluginDir(layout paths.Layout, cfg *config.Store) string {
 	return layout.Plugins
 }
 
-func tgcOptions(cfg *config.Store, log *logx.Logger, a *App) tgc.Options {
-	c := cfg.Get()
-	return tgc.Options{
-		AppID:          c.EffectiveAppID(),
-		AppHash:        c.EffectiveAppHash(),
-		Phone:          c.Telegram.Phone,
-		SessionPath:    a.Paths.SessionFile(),
-		TestDC:         c.Telegram.TestDC,
-		BlockedMode:    c.Telegram.BlockedMode,
-		MTProxy:        c.Telegram.MTProxy,
-		Socks5:         c.Telegram.Socks5,
-		DeviceName:     c.Telegram.DeviceName,
-		DeviceModel:    c.Telegram.DeviceModel,
-		DeviceSystem:   c.Telegram.DeviceSystem,
-		DeviceVersion:  c.Telegram.DeviceVersion,
-		DeviceLanguage: c.Telegram.DeviceLanguage,
-		PFS:            c.Telegram.PFS,
-		NoUpdates:      c.Telegram.DisableUpdates,
-		Logger:         log,
-		OnState: func(s proto.SessionState, err string) {
-			log.Info("session state", logx.F("state", string(s)), logx.F("error", err))
-			if s == proto.StateError || strings.Contains(strings.ToLower(err), "api_id") || strings.Contains(strings.ToLower(err), "flood") {
-				if !c.UsingCustomAPIKeys() {
-					log.Warn("⚠ Можлива проблема зі стандартними ключами Telegram. Ви можете встановити власні ключі через 'aurora setup' або у веб-панелі", logx.F("error", err))
-				}
-			}
-			switch s {
-			case proto.StateAuthorized:
-				a.Plugins.Emit(proto.EventSessionStart, a.TG.Me())
-			case proto.StateOffline, proto.StateError:
-				a.Plugins.Emit(proto.EventSessionEnd, map[string]string{"state": string(s), "error": err})
-			}
-			a.publish(proto.Event{Name: "core.state", Data: map[string]string{"state": string(s), "error": err}})
-		},
-		OnEvent: func(name string, data any) {
-			a.Plugins.Emit(name, data)
-			a.publish(proto.Event{Name: name, Data: data})
-		},
-	}
-}
-
 // Run boots the core and blocks until ctx is cancelled.
 func (a *App) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -256,19 +215,35 @@ func (a *App) runTelegramForAccount(ctx context.Context, id string, tg *tgc.Runt
 		if err == nil {
 			return
 		}
-		if errors.Is(err, tgc.ErrLoginAborted) {
+
+		// An unauthorized account restarts cheaply and the user is usually
+		// watching a login prompt, so keep the delay short: a 2 minute backoff
+		// while someone is waiting for a code looks exactly like a hang.
+		maxBackoff := 2 * time.Minute
+		if tg.State() != proto.StateAuthorized {
+			maxBackoff = 8 * time.Second
+		}
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+
+		switch {
+		case errors.Is(err, tgc.ErrLoginAborted):
 			a.Log.Warn("login aborted", logx.F("acc", id))
 			backoff = 10 * time.Second
-		} else {
-			a.Log.Error("account runtime stopped", logx.F("acc", id), logx.F("error", err), logx.F("retry_in", backoff))
-			backoff = nextBackoff(backoff, 2*time.Minute)
+		default:
+			a.Log.Error("account runtime stopped",
+				logx.F("acc", id),
+				logx.F("error", err),
+				logx.F("retry_in", backoff),
+			)
+			backoff = nextBackoff(backoff, maxBackoff)
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(backoff):
 		}
-		backoff = nextBackoff(backoff, 2*time.Minute)
 	}
 }
 
@@ -322,19 +297,45 @@ func (a *App) shutdown() {
 	})
 }
 
-// Shutdown asks the core to stop. It is what the panel's restart button calls.
+// Shutdown asks the core to stop. It is what the panel's stop button calls.
+//
+// It honours ctx: if the core was never started (or is wedged in its own
+// shutdown path) the caller gets ctx.Err() instead of blocking forever.
 func (a *App) Shutdown(ctx context.Context) error {
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		a.closeSubscribers()
-		if a.stopFn != nil {
-			a.stopFn()
-		}
-	}()
-	<-a.stopped
-	return nil
+	if a.stopFn == nil {
+		return errors.New("core is not running")
+	}
+	a.closeSubscribers()
+	a.stopFn()
+
+	select {
+	case <-a.stopped:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
+// Restart stops the core and replaces the running process with a fresh one,
+// keeping the same argv, the same open file descriptors (so the daemon's log
+// file stays attached) and the same pid.
+//
+// The panel has no parent process to respawn us — `aurora start` exits
+// immediately after fork — so a genuine restart has to be done in place.
+func (a *App) Restart(ctx context.Context) error {
+	if a.stopFn == nil {
+		return errors.New("core is not running")
+	}
+	if err := a.Shutdown(ctx); err != nil {
+		return fmt.Errorf("stop before restart: %w", err)
+	}
+	a.Log.Info("restarting in place", logx.F("version", buildinfo.Version))
+	return restartSelf()
+}
+
+// closeSubscribers tears down every live log/event channel. It must only be
+// called once, from Shutdown, and only with a.mu held by the caller path that
+// also serialises publish.
 func (a *App) closeSubscribers() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -577,16 +578,22 @@ func guessPluginName(source string) string {
 // PluginUninstall implements web.Backend.
 func (a *App) PluginUninstall(name string) error { return a.Plugins.Uninstall(name, true) }
 
-// Auth implements web.Backend.
-func (a *App) Auth() web.AuthState {
-	step := a.TG.Step()
-	st := web.AuthState{State: step, SignedIn: step == tgc.AuthSignedIn}
-	st.Phone = maskPhone(a.Cfg.Get().Telegram.Phone)
-	if st.State == tgc.AuthSignedIn && a.TG.State() == proto.StateAuthorized {
-		st.Message = "авторизовано"
+// Core returns the runtime of the active account, or nil when no account is
+// configured. Every caller must handle nil — a half-written config used to
+// make the whole panel panic.
+func (a *App) Core() *tgc.Runtime { return a.getTG("") }
+
+// tg returns the active runtime or an error suitable for an API response.
+func (a *App) tg() (*tgc.Runtime, error) {
+	tg := a.getTG("")
+	if tg == nil {
+		return nil, errors.New("акаунт Telegram не налаштовано — виконайте 'aurora setup'")
 	}
-	return st
+	return tg, nil
 }
+
+// Auth implements web.Backend.
+func (a *App) Auth() web.AuthState { return a.AuthForAccount("") }
 
 func maskPhone(p string) string {
 	p = strings.TrimSpace(p)
@@ -598,28 +605,103 @@ func maskPhone(p string) string {
 
 // RequestCode implements web.Backend.
 func (a *App) RequestCode(ctx context.Context, phone string) error {
-	if phone != "" {
-		a.TG.SetPhone(phone)
-		_ = a.Cfg.Update(func(c *config.Config) { c.Telegram.Phone = phone })
-		a.Log.Info("login phone updated", logx.F("phone", maskPhone(phone)))
-	}
-	return a.TG.RequestCode(ctx, phone)
+	return a.RequestCodeForAccount(ctx, "", phone)
 }
 
 // SubmitCode implements web.Backend.
-func (a *App) SubmitCode(code string) error { return a.TG.SubmitCode(code) }
+func (a *App) SubmitCode(code string) error { return a.SubmitCodeForAccount("", code) }
 
 // SubmitPassword implements web.Backend.
-func (a *App) SubmitPassword(password string) error { return a.TG.SubmitPassword(password) }
+// StartQRLoginForAccount exports a login token and blocks until the user
+// approves it in an already authorized Telegram app. It is a no-op when a
+// QR flow is already in progress.
+func (a *App) StartQRLoginForAccount(ctx context.Context, accID string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("акаунт Telegram не налаштовано")
+	}
+	return tg.StartQR(ctx)
+}
+
+// QRStateForAccount reports the pending login token.
+func (a *App) QRStateForAccount(accID string) web.QRState {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return web.QRState{}
+	}
+	url, expires, running := tg.QRToken()
+	return web.QRState{URL: url, Expires: expires, Running: running}
+}
+
+// RequestCodeSMSForAccount asks Telegram to deliver the login code over SMS
+// instead of the in-app channel.
+func (a *App) RequestCodeSMSForAccount(ctx context.Context, accID string, phone string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("акаунт Telegram не налаштовано")
+	}
+	if phone != "" {
+		tg.SetPhone(phone)
+		_ = a.Cfg.Update(func(c *config.Config) {
+			if accID == "" || accID == a.activeAcc {
+				c.Telegram.Phone = phone
+			}
+			for i := range c.Accounts {
+				if c.Accounts[i].ID == accID || (accID == "" && c.Accounts[i].ID == a.activeAcc) {
+					c.Accounts[i].Phone = phone
+				}
+			}
+		})
+	}
+	return tg.RequestCodeSMS(ctx, tg.Phone())
+}
+
+// ResendCodeForAccount asks Telegram to send the login code again through
+// the next available channel (SMS / call).
+func (a *App) ResendCodeForAccount(ctx context.Context, accID string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("акаунт Telegram не налаштовано")
+	}
+	return tg.ResendCode(ctx)
+}
+
+func (a *App) SignUp(firstName, lastName string) error {
+	return a.SignUpForAccount("", firstName, lastName)
+}
+
+func (a *App) ResendCode(ctx context.Context) error { return a.ResendCodeForAccount(ctx, "") }
+
+func (a *App) RequestCodeSMS(ctx context.Context, phone string) error {
+	return a.RequestCodeSMSForAccount(ctx, "", phone)
+}
+
+func (a *App) StartQRLogin(ctx context.Context) error { return a.StartQRLoginForAccount(ctx, "") }
+
+func (a *App) QRState() web.QRState { return a.QRStateForAccount("") }
+
+func (a *App) SubmitPassword(password string) error { return a.SubmitPasswordForAccount("", password) }
 
 // Session implements web.Backend.
 func (a *App) Session() tgc.SessionInfo { return tgc.InspectSession(a.Paths.SessionFile()) }
 
 // ImportSession implements web.Backend.
-func (a *App) ImportSession(s string) error { return a.TG.ImportSession(s) }
+func (a *App) ImportSession(s string) error {
+	tg, err := a.tg()
+	if err != nil {
+		return err
+	}
+	return tg.ImportSession(s)
+}
 
 // Logout implements web.Backend.
-func (a *App) Logout(ctx context.Context) error { return a.TG.Logout(ctx) }
+func (a *App) Logout(ctx context.Context) error {
+	tg, err := a.tg()
+	if err != nil {
+		return err
+	}
+	return tg.Logout(ctx)
+}
 
 // LogTail implements web.Backend.
 func (a *App) LogTail(n int) []logx.Record { return a.Log.Tail(n) }
@@ -667,24 +749,27 @@ func (a *App) Notify(title, text, level string) {
 	a.publish(proto.Event{Name: "ui.notify", Data: proto.NotifyRequest{Title: title, Text: text, Level: level}})
 }
 
+// publish records the event in the replay backlog and hands it to every
+// subscriber.
+//
+// The fan-out happens while a.mu is still held. Every send is non-blocking, so
+// this cannot stall the MTProto update loop, and it is what makes
+// closeSubscribers safe: a subscriber channel is only ever closed by a
+// goroutine that already holds a.mu, so a producer can never be mid-send on a
+// channel that is about to be closed.
 func (a *App) publish(ev proto.Event) {
 	a.mu.Lock()
 	a.notifyQueue = append(a.notifyQueue, ev)
 	if len(a.notifyQueue) > 200 {
 		a.notifyQueue = a.notifyQueue[len(a.notifyQueue)-200:]
 	}
-	subs := make([]chan proto.Event, 0, len(a.eventSubs))
 	for _, ch := range a.eventSubs {
-		subs = append(subs, ch)
-	}
-	a.mu.Unlock()
-
-	for _, ch := range subs {
 		select {
 		case ch <- ev:
 		default: // never block the producer
 		}
 	}
+	a.mu.Unlock()
 }
 
 // ConfigValue implements plugins.Services (dotted-path lookup, e.g.
@@ -717,26 +802,57 @@ func lookupJSON(key string, v config.Config) (any, bool) {
 }
 
 // Ready implements plugins.Services.
-func (a *App) Ready() bool { return a.TG.Ready() }
+func (a *App) Ready() bool {
+	tg := a.getTG("")
+	return tg != nil && tg.Ready()
+}
 
 // SendServices implements plugins.Services.
 func (a *App) Resolve(ctx context.Context, peer string) (proto.PeerInfo, error) {
-	return a.TG.Resolve(ctx, peer)
+	tg, err := a.tg()
+	if err != nil {
+		return proto.PeerInfo{}, err
+	}
+	return tg.Resolve(ctx, peer)
 }
 
 // GetMe implements plugins.Services.
-func (a *App) GetMe(ctx context.Context) (proto.User, error) { return a.TG.GetMe(ctx) }
+func (a *App) GetMe(ctx context.Context) (proto.User, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return proto.User{}, err
+	}
+	return tg.GetMe(ctx)
+}
 
 // History implements plugins.Services.
 func (a *App) History(ctx context.Context, peer string, limit int) ([]proto.Message, error) {
-	return a.TG.History(ctx, peer, limit)
+	tg, err := a.tg()
+	if err != nil {
+		return nil, err
+	}
+	return tg.History(ctx, peer, limit)
 }
 
 // LoggedIn reports whether the account is authorized.
-func (a *App) LoggedIn() bool { return a.TG.State() == proto.StateAuthorized }
+func (a *App) LoggedIn() bool {
+	tg := a.getTG("")
+	return tg != nil && tg.State() == proto.StateAuthorized
+}
 
-// Restart triggers a full core restart.
-func (a *App) Restart() error { return a.Shutdown(context.Background()) }
+// RestartInPlace stops the core and re-execs this binary in place.
+func (a *App) RestartInPlace(ctx context.Context) error { return a.Restart(ctx) }
+
+// restartSelf re-execs the current binary with the same argv.
+// Used by Restart: the panel has no supervisor to respawn us.
+func restartSelf() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	args := append([]string{exe}, os.Args[1:]...)
+	return syscallExec(exe, args, os.Environ())
+}
 
 // PluginNames returns installed plugin names, sorted.
 func (a *App) PluginNames() []string {
@@ -779,6 +895,11 @@ func (a *App) tgcOptionsForAccount(acc config.AccountConfig) tgc.Options {
 		Logger:         sink,
 		OnState: func(s proto.SessionState, err string) {
 			sink.Info("session state", logx.F("state", string(s)), logx.F("error", err))
+			if s == proto.StateError || strings.Contains(strings.ToLower(err), "api_id") || strings.Contains(strings.ToLower(err), "flood") {
+				if !c.UsingCustomAPIKeys() {
+					sink.Warn("⚠ Можлива проблема зі стандартними ключами Telegram. Встановіть власні через 'aurora setup'", logx.F("error", err))
+				}
+			}
 			switch s {
 			case proto.StateAuthorized:
 				tg := a.getTG(acc.ID)
@@ -1018,13 +1139,39 @@ func (a *App) ToggleAccountPlugin(accID, pluginName string) (bool, error) {
 func (a *App) AuthForAccount(accID string) web.AuthState {
 	tg := a.getTG(accID)
 	if tg == nil {
-		return web.AuthState{State: proto.AuthPhone}
+		return web.AuthState{State: proto.AuthNone, Message: "акаунт не налаштовано"}
 	}
 	step := tg.Step()
-	st := web.AuthState{State: step, SignedIn: step == tgc.AuthSignedIn}
+	st := web.AuthState{
+		State:     step,
+		SignedIn:  step == tgc.AuthSignedIn,
+		Connected: tg.Connected(),
+		AppOnly:   tg.CodeAppOnly(),
+		Session:   tg.State(),
+	}
 	st.Phone = maskPhone(tg.Phone())
-	if st.State == tgc.AuthSignedIn && tg.State() == proto.StateAuthorized {
+	switch {
+	case step == tgc.AuthSignedIn && tg.State() == proto.StateAuthorized:
 		st.Message = "авторизовано"
+	case !st.Connected:
+		st.Message = "підключення до Telegram…"
+	case step == tgc.AuthCode:
+		st.Message = "чекаємо на код підтвердження"
+		if info := tg.CodeInfo(); info != "" {
+			st.Message += " (" + info + ")"
+		}
+		// Telegram only allows the fallback channel after the code times
+		// out, so the UI can say when resend becomes useful.
+		if next, at := tg.CodeNext(); next != "" {
+			st.Message += "; наступний канал " + next + " з " + at.Format("15:04:05")
+		} else if tg.CodeAppOnly() {
+			st.Message += "; SMS для сторонніх клієнтів вимкнено Telegram — " +
+				"потрібен вхід на офіційному клієнті та aurora session import"
+		}
+	case step == tgc.AuthSignup:
+		st.Message = "номер не зареєстровано — введіть ім'я для створення акаунта"
+	case step == tgc.AuthPassword:
+		st.Message = "потрібен пароль 2FA"
 	}
 	return st
 }
@@ -1032,18 +1179,22 @@ func (a *App) AuthForAccount(accID string) web.AuthState {
 func (a *App) RequestCodeForAccount(ctx context.Context, accID string, phone string) error {
 	tg := a.getTG(accID)
 	if tg == nil {
-		return errors.New("account not found")
+		return errors.New("акаунт Telegram не налаштовано — виконайте 'aurora setup'")
 	}
 	if phone != "" {
 		tg.SetPhone(phone)
 		_ = a.Cfg.Update(func(c *config.Config) {
+			if accID == "" || accID == a.activeAcc {
+				c.Telegram.Phone = phone
+			}
 			for i := range c.Accounts {
-				if c.Accounts[i].ID == accID {
+				if c.Accounts[i].ID == accID || (accID == "" && c.Accounts[i].ID == a.activeAcc) {
 					c.Accounts[i].Phone = phone
 					break
 				}
 			}
 		})
+		a.Log.Info("login phone updated", logx.F("phone", maskPhone(phone)))
 	}
 	return tg.RequestCode(ctx, phone)
 }
@@ -1051,15 +1202,25 @@ func (a *App) RequestCodeForAccount(ctx context.Context, accID string, phone str
 func (a *App) SubmitCodeForAccount(accID string, code string) error {
 	tg := a.getTG(accID)
 	if tg == nil {
-		return errors.New("account not found")
+		return errors.New("акаунт Telegram не налаштовано")
 	}
 	return tg.SubmitCode(code)
+}
+
+// SignUpForAccount registers a phone number that Telegram does not know yet
+// and finishes the login for it.
+func (a *App) SignUpForAccount(accID string, firstName, lastName string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("акаунт Telegram не налаштовано")
+	}
+	return tg.SubmitSignup(firstName, lastName)
 }
 
 func (a *App) SubmitPasswordForAccount(accID string, password string) error {
 	tg := a.getTG(accID)
 	if tg == nil {
-		return errors.New("account not found")
+		return errors.New("акаунт Telegram не налаштовано")
 	}
 	return tg.SubmitPassword(password)
 }
@@ -1071,7 +1232,7 @@ func (a *App) SessionForAccount(accID string) proto.SessionInfo {
 func (a *App) ImportSessionForAccount(accID string, s string) error {
 	tg := a.getTG(accID)
 	if tg == nil {
-		return errors.New("account not found")
+		return errors.New("акаунт Telegram не налаштовано")
 	}
 	return tg.ImportSession(s)
 }
@@ -1079,7 +1240,7 @@ func (a *App) ImportSessionForAccount(accID string, s string) error {
 func (a *App) LogoutForAccount(ctx context.Context, accID string) error {
 	tg := a.getTG(accID)
 	if tg == nil {
-		return errors.New("account not found")
+		return errors.New("акаунт Telegram не налаштовано")
 	}
 	return tg.Logout(ctx)
 }

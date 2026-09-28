@@ -1715,3 +1715,73 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   border-radius: var(--radius-md);
   margin-top: 10px;
 }
+
+/* Auth v2: QR на цьому ж телефоні / код / імпорт сесії */
+.auth-tabs { margin-bottom: 16px; }
+.auth-tabs button { flex: 1; white-space: nowrap; }
+.auth-lead { font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
+.auth-lead code, .form-help code, .hint-box code, .warn-box code { font-family: var(--font-mono, monospace); font-size: 12px; }
+.qr-box {
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  min-height: 88px;
+}
+.qr-status { font-size: 13px; color: var(--text-2); }
+.qr-link {
+  margin-top: 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  user-select: all;
+}
+.qr-expires { margin-top: 8px; font-size: 12px; color: var(--text-3); }
+.hint-box, .warn-box {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.hint-box { background: var(--accent-soft); border: 1px solid var(--line); color: var(--text-2); }
+.warn-box { background: var(--warn-soft, rgba(255,170,0,.08)); border: 1px solid var(--line); color: var(--text-2); }
+.warn-box b, .hint-box b { color: var(--text); }
+.warn-box a, .hint-box a, .auth-lead a, .guide a { color: var(--accent); }
+.auth-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+.auth-status.err { border-color: var(--err); color: var(--err); }
+.guide {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.guide summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.guide ol { margin: 10px 0 0 18px; display: grid; gap: 8px; }
+.code-block {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}

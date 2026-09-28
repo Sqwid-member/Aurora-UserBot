@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/ipc"
-	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 )
 
 // State is the lifecycle state of a plugin instance.
@@ -137,10 +137,9 @@ func (p *Instance) Start(ctx context.Context) error {
 		p.mu.Unlock()
 		return errors.New("plugins: already running")
 	}
-	p.mu.Unlock()
-
-	p.setState(StateStarting)
+	p.state = StateStarting
 	p.lastErr = ""
+	p.mu.Unlock()
 
 	bin, args, err := p.resolveCommand()
 	if err != nil {
@@ -221,7 +220,10 @@ func (p *Instance) Start(ctx context.Context) error {
 		_ = conn.Serve(p.ctx)
 		_ = conn.Close()
 	}()
-	go p.dispatchLoop()
+	p.mu.RLock()
+	writerEnd := p.writerEnd
+	p.mu.RUnlock()
+	go p.dispatchLoop(writerEnd)
 	go p.supervise()
 
 	timeout := p.opts.StartTimeout
@@ -255,7 +257,7 @@ func (p *Instance) Start(ctx context.Context) error {
 	var loaded map[string]any
 	if err := conn.Call(loadCtx, "plugin.load", map[string]any{
 		"plugin": p.Name,
-		"events": p.Manifest.Events,
+		"events": p.Manifest.Subscribed(),
 		"commands": func() []map[string]any {
 			out := make([]map[string]any, 0, len(p.Manifest.Commands))
 			for _, c := range p.Manifest.Commands {
@@ -283,8 +285,10 @@ func (p *Instance) Start(ctx context.Context) error {
 }
 
 func (p *Instance) fail(err error) {
+	p.mu.Lock()
 	p.lastErr = err.Error()
-	p.setState(StateFailed)
+	p.state = StateFailed
+	p.mu.Unlock()
 	p.log.Error("plugin failed", logx.F("error", err))
 }
 
@@ -328,8 +332,15 @@ func (p *Instance) stop(ctx context.Context) error {
 
 	p.cancel()
 	_ = conn.Close()
-	close(p.writerEnd)
-	p.setState(StateStopped)
+	p.mu.Lock()
+	select {
+	case <-p.writerEnd:
+		// Already closed by a concurrent Stop: closing twice panics.
+	default:
+		close(p.writerEnd)
+	}
+	p.state = StateStopped
+	p.mu.Unlock()
 	p.log.Info("plugin stopped")
 	return nil
 }
@@ -337,7 +348,9 @@ func (p *Instance) stop(ctx context.Context) error {
 // supervise waits for the process and records the exit reason.
 func (p *Instance) supervise() {
 	defer close(p.done)
+	p.mu.RLock()
 	cmd := p.cmd
+	p.mu.RUnlock()
 	err := cmd.Wait()
 
 	p.mu.Lock()
@@ -348,24 +361,31 @@ func (p *Instance) supervise() {
 	p.mu.Unlock()
 
 	state := p.State()
+	var exitMsg string
 	switch {
 	case state == StateStopping || p.ctx.Err() != nil:
 		p.setState(StateStopped)
 		return
 	case err == nil:
+		p.mu.Lock()
 		p.lastErr = "exited cleanly without being asked to stop"
+		exitMsg = p.lastErr
+		p.mu.Unlock()
 	default:
+		p.mu.Lock()
 		p.lastErr = err.Error()
+		exitMsg = p.lastErr
+		p.mu.Unlock()
 	}
 	p.setState(StateFailed)
-	p.log.Warn("plugin process exited", logx.F("error", orDefault(p.lastErr, "unknown")))
+	p.log.Warn("plugin process exited", logx.F("error", orDefault(exitMsg, "unknown")))
 }
 
 // dispatchLoop drains the event queue into the plugin.
-func (p *Instance) dispatchLoop() {
+func (p *Instance) dispatchLoop(writerEnd <-chan struct{}) {
 	for {
 		select {
-		case <-p.writerEnd:
+		case <-writerEnd:
 			return
 		case ev := <-p.queue:
 			p.mu.RLock()
@@ -521,7 +541,7 @@ func (p *Instance) Stats() Stats {
 		Dropped:     p.dropped.Load(),
 		OutputKB:    p.outputBytes.Load() / 1024,
 		LastError:   lastErr,
-		Subscribed:  p.Manifest.Events,
+		Subscribed:  p.Manifest.Subscribed(),
 		Permissions: p.Manifest.Permissions,
 		Path:        p.Dir,
 	}

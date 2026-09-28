@@ -675,7 +675,7 @@
   </div>
 </div>
 
-<!-- Modal: Auth Login Wizard -->
+<!-- Modal: Auth Login Wizard (v2: QR на цьому ж телефоні / код / імпорт сесії) -->
 <div class="modal-overlay" id="modal-auth">
   <div class="modal-box">
     <div class="modal-header">
@@ -688,48 +688,125 @@
       </button>
     </div>
     <div class="modal-body">
-      <!-- Step 1: Phone -->
-      <div id="auth-step-phone">
-        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть міжнародний номер телефону для отримання коду підтвердження:</p>
-        <form id="form-auth-phone">
-          <div class="form-group">
-            <input type="text" class="form-input" id="auth-phone-input" placeholder="+380991234567" required>
-          </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;">Отримати код</button>
-        </form>
+      <div class="seg auth-tabs" id="auth-tabs" role="tablist" aria-label="Спосіб входу">
+        <button type="button" class="active" data-auth-tab="qr">QR на цьому телефоні</button>
+        <button type="button" data-auth-tab="code">Код з Telegram</button>
+        <button type="button" data-auth-tab="session">Імпорт сесії</button>
       </div>
 
-      <!-- Step 2: Code -->
-      <div id="auth-step-code" style="display:none;">
-        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть код підтвердження з додатку Telegram або SMS:</p>
-        <form id="form-auth-code">
-          <div class="form-group">
-            <input type="text" class="form-input" id="auth-code-input" placeholder="12345" required>
+      <!-- Tab 1: QR (без сканування, одним тапом) -->
+      <div id="auth-tab-qr">
+        <p class="auth-lead">Сканувати нічого не треба. Натисніть «Отримати посилання», потім «Відкрити в Telegram» на <b>цьому ж телефоні</b> — застосунок Telegram сам попросить підтвердити вхід. Номер, SMS і 2FA не потрібні.</p>
+        <div class="qr-box" id="qr-box">
+          <div class="qr-status" id="qr-status">Посилання ще не запитано.</div>
+          <div class="qr-link" id="qr-link" hidden></div>
+          <div class="qr-expires" id="qr-expires" hidden></div>
+        </div>
+        <div style="display:grid; gap:10px; margin-top:12px;">
+          <button type="button" class="btn btn-primary" id="btn-qr-start" style="width:100%;">Отримати посилання для входу</button>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <a class="btn btn-success" id="btn-qr-open" href="#" target="_self" style="text-decoration:none; justify-content:center; opacity:.5; pointer-events:none;">Відкрити в Telegram</a>
+            <button type="button" class="btn" id="btn-qr-copy">Копіювати посилання</button>
           </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;">Підтвердити код</button>
-        </form>
+          <button type="button" class="btn btn-sm" id="btn-qr-refresh" style="justify-self:center;">Оновити статус</button>
+        </div>
+        <p class="form-help" style="margin-top:12px;">Посилання виглядає як <code>tg://login?token=…</code> і діє кілька хвилин. Якщо час вийшов — натисніть «Отримати посилання» ще раз. Працює і в Termux, і на десктопі з відкритим Telegram.</p>
       </div>
 
-      <!-- Step 3: 2FA Password -->
-      <div id="auth-step-pwd" style="display:none;">
-        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть пароль двофакторної автентифікації (2FA Cloud Password):</p>
-        <form id="form-auth-pwd">
-          <div class="form-group">
-            <input type="password" class="form-input" id="auth-pwd-input" placeholder="Ваш 2FA пароль" required>
-          </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;">Увійти</button>
-        </form>
+      <!-- Tab 2: code -->
+      <div id="auth-tab-code" hidden>
+        <!-- Step 1: Phone -->
+        <div id="auth-step-phone">
+          <p class="auth-lead">Введіть міжнародний номер телефону для отримання коду підтвердження:</p>
+          <form id="form-auth-phone">
+            <div class="form-group">
+              <input type="text" class="form-input" id="auth-phone-input" placeholder="+380991234567" required autocomplete="tel">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button type="submit" class="btn btn-primary">Отримати код</button>
+              <button type="button" class="btn" id="btn-auth-sms">Код по SMS</button>
+            </div>
+          </form>
+          <div class="hint-box">Якщо код приходить лише «в застосунок», а застосунок не відкрито — тисніть <b>«Код по SMS»</b> або <b>«Надіслати ще раз»</b> після першого запиту: Telegram перемкне канал на SMS/дзвінок, коли це дозволено.</div>
+        </div>
+
+        <!-- Step 2: Code -->
+        <div id="auth-step-code" style="display:none;">
+          <p class="auth-lead">Введіть код підтвердження з додатку Telegram або SMS:</p>
+          <form id="form-auth-code">
+            <div class="form-group">
+              <input type="text" class="form-input" id="auth-code-input" placeholder="12345" inputmode="numeric" autocomplete="one-time-code">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button type="submit" class="btn btn-primary">Підтвердити код</button>
+              <button type="button" class="btn" id="btn-auth-resend">Надіслати ще раз</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Step 2b: signup -->
+        <div id="auth-step-signup" style="display:none;">
+          <p class="auth-lead">🆕 Цей номер ще не зареєстровано в Telegram — створимо новий акаунт:</p>
+          <form id="form-auth-signup">
+            <div class="form-group">
+              <label class="form-label">Ім'я (обов'язково)</label>
+              <input type="text" class="form-input" id="auth-signup-first" placeholder="Ваше ім'я" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Прізвище (необов'язково)</label>
+              <input type="text" class="form-input" id="auth-signup-last" placeholder="Прізвище">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Створити акаунт</button>
+          </form>
+        </div>
+
+        <!-- Step 3: 2FA Password -->
+        <div id="auth-step-pwd" style="display:none;">
+          <p class="auth-lead">Введіть пароль двофакторної автентифікації (2FA Cloud Password):</p>
+          <form id="form-auth-pwd">
+            <div class="form-group">
+              <input type="password" class="form-input" id="auth-pwd-input" placeholder="Ваш 2FA пароль" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Увійти</button>
+          </form>
+        </div>
+
+        <div class="auth-status" id="auth-status" hidden></div>
+
+        <div class="warn-box" id="auth-apikey-hint">
+          <b>Код не приходить або Telegram пише FLOOD_WAIT / API_ID_INVALID?</b>
+          Стандартні публічні ключі Telegram часто урізаються лімітами. Вкажіть власні ключі з
+          <a href="https://my.telegram.org" target="_blank" rel="noopener">my.telegram.org → API development tools</a>
+          у вкладці «Налаштування &amp; RAM», або командою <code>aurora setup</code>, і спробуйте знову.
+        </div>
       </div>
 
-      <!-- Import Session Alternative -->
-      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--md-border-subtle);">
-        <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:10px;">Або імпортуйте готову String Session (Telethon / Pyrogram):</p>
+      <!-- Tab 3: session import -->
+      <div id="auth-tab-session" hidden>
+        <p class="auth-lead">Вставте готову <b>StringSession</b> (Telethon-формат, починається з <code>1…</code>). Це офіційний спосіб перенести сесію з іншого клієнта — нічого перехоплювати не треба.</p>
         <form id="form-import-session">
           <div class="form-group">
-            <input type="text" class="form-input" id="auth-session-input" placeholder="Вставте рядок сесії...">
+            <label class="form-label">Рядок сесії</label>
+            <textarea class="form-textarea" id="auth-session-input" rows="3" placeholder="1aBcDeFgHiJkLm…" spellcheck="false" style="font-family:var(--font-mono,monospace);"></textarea>
           </div>
-          <button type="submit" class="btn" style="width:100%;">Імпортувати сесію</button>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Імпортувати сесію</button>
         </form>
+        <details class="guide">
+          <summary>Як отримати StringSession з офіційного клієнта (2 хв)</summary>
+          <ol>
+            <li>Відкрийте <a href="https://my.telegram.org" target="_blank" rel="noopener">my.telegram.org</a> і створіть <b>API ID / API Hash</b> (розділ API development tools). Нікому їх не показуйте.</li>
+            <li>На комп'ютері виконайте (потрібен Python + <code>pip install telethon</code>):
+              <pre class="code-block">from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
+client = TelegramClient(StringSession(), API_ID, API_HASH)
+client.start()  # введете номер, код і 2FA в офіційному клієнті Telethon
+print(client.session.save())</pre>
+            </li>
+            <li>Скопіюйте надрукований рядок сюди і натисніть «Імпортувати сесію», потім перезапустіть ядро.</li>
+            <li>Резервну копію поточної сесії можна зробити командою <code>aurora session export</code>. Нікому не пересилайте рядок сесії — це повний доступ до акаунту.</li>
+          </ol>
+        </details>
+        <div class="warn-box">Нікому не надсилайте свій рядок сесії, код з SMS і пароль 2FA. Aurora ніколи їх не просить поза цим вікном входу.</div>
       </div>
     </div>
   </div>

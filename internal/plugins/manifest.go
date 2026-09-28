@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ManifestName is the file every plugin directory must contain.
@@ -27,6 +28,7 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,31}$`)
 
 // Manifest is the on-disk plugin descriptor.
 type Manifest struct {
+	mu sync.RWMutex `json:"-"`
 	// Name is the plugin identifier. Must match the directory name.
 	Name string `json:"name"`
 	// Version is a free-form semantic version.
@@ -233,12 +235,35 @@ func (l *Limits) clamp() {
 
 // HasEvent reports whether the plugin subscribed to an event name.
 func (m *Manifest) HasEvent(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	for _, e := range m.Events {
 		if e == "*" || e == name {
 			return true
 		}
 	}
 	return false
+}
+
+// SubscribeEvents appends runtime event subscriptions (thread-safe).
+func (m *Manifest) SubscribeEvents(names []string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if n == "*" {
+			m.Events = normalize(append(m.Events, "*"))
+			break
+		}
+		m.Events = append(m.Events, n)
+	}
+	m.Events = normalize(m.Events)
+	out := make([]string, len(m.Events))
+	copy(out, m.Events)
+	return out
 }
 
 // HasCapability reports whether the plugin may use a Telegram capability.
@@ -249,6 +274,15 @@ func (m *Manifest) HasCapability(cap string) bool {
 		}
 	}
 	return false
+}
+
+// Subscribed returns a copy of the current event list (thread-safe).
+func (m *Manifest) Subscribed() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.Events))
+	copy(out, m.Events)
+	return out
 }
 
 // Command looks a command spec up by name or alias.

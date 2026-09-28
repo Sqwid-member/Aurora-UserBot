@@ -40,14 +40,21 @@ func Resolve(env Env) (Layout, error) {
 		env = OSEnv
 	}
 
-	home := firstNonEmpty(
-		env("AURORA_HOME"),
-		xdg(env, "XDG_DATA_HOME", ".local/share"),
-		env("HOME"),
-	)
+	// Explicit AURORA_HOME is used verbatim (cleaned). Everything else gets
+	// the "/aurora" suffix so XDG_DATA_HOME or ~/.local/share are not
+	// polluted with our files directly.
+	var home string
+	if v := strings.TrimSpace(env("AURORA_HOME")); v != "" {
+		home = v
+	} else if v := strings.TrimSpace(env("XDG_DATA_HOME")); v != "" {
+		home = filepath.Join(v, "aurora")
+	} else if v := strings.TrimSpace(env("HOME")); v != "" {
+		home = filepath.Join(v, ".local", "share", "aurora")
+	}
 	if home == "" {
 		return Layout{}, os.ErrNotExist
 	}
+	home = filepath.Clean(home)
 	abs, err := filepath.Abs(home)
 	if err != nil {
 		return Layout{}, err
@@ -63,27 +70,6 @@ func Resolve(env Env) (Layout, error) {
 		Run:     filepath.Join(abs, "run"),
 	}
 	return l, nil
-}
-
-// xdg returns $var joined with the Termux-friendly fallback suffix.
-func xdg(env Env, varName, fallback string) string {
-	if v := strings.TrimSpace(env(varName)); v != "" {
-		return v
-	}
-	home := env("HOME")
-	if home == "" {
-		return ""
-	}
-	return filepath.Join(home, fallback)
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if s := strings.TrimSpace(v); s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 // ConfigFile is the path of the main configuration file.

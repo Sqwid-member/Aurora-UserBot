@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
+	"os"
 	"runtime"
 	"strings"
 	"syscall"

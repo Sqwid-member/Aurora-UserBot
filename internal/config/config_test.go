@@ -75,7 +75,7 @@ func TestOpenCreatesAndReloads(t *testing.T) {
 func TestNormalizeClampsNonsense(t *testing.T) {
 	c := Default()
 	c.Web.Port = -5
-	c.Web.Token = "short"
+	c.Web.Token = ""
 	c.Runtime.EventQueue = 0
 	c.Plugins.StartTimeoutSec = -1
 	c.normalize()
@@ -84,7 +84,7 @@ func TestNormalizeClampsNonsense(t *testing.T) {
 		t.Errorf("port = %d", c.Web.Port)
 	}
 	if len(c.Web.Token) < 16 {
-		t.Errorf("token = %q", c.Web.Token)
+		t.Errorf("empty token must be regenerated, got %q", c.Web.Token)
 	}
 	if c.Runtime.EventQueue <= 0 {
 		t.Errorf("event queue = %d", c.Runtime.EventQueue)
@@ -92,16 +92,37 @@ func TestNormalizeClampsNonsense(t *testing.T) {
 	if c.Plugins.StartTimeoutSec <= 0 {
 		t.Errorf("start timeout = %d", c.Plugins.StartTimeoutSec)
 	}
+
+	// An explicit short token is the user's choice: replacing it silently
+	// breaks every saved panel link, so normalize must keep it.
+	c2 := Default()
+	c2.Web.Token = "short"
+	c2.normalize()
+	if c2.Web.Token != "short" {
+		t.Errorf("explicit short token was replaced: %q", c2.Web.Token)
+	}
+}
+
+func TestUnknownFieldsAreTolerated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	// Forward compat: a config written by a newer version (extra keys)
+	// must not brick the core after downgrade.
+	if err := writeFile(path, `{"version": 1, "unknown_field": 3}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path, nil); err != nil {
+		t.Fatalf("unknown fields must be tolerated, got %v", err)
+	}
 }
 
 func TestInvalidJSONIsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := writeFile(path, `{"version": 1, "unknown_field": 3}`); err != nil {
+	if err := writeFile(path, `{"version": `); err != nil {
 		t.Fatal(err)
 	}
 	_, err := Open(path, nil)
 	if err == nil || !strings.Contains(err.Error(), "invalid") {
-		t.Fatalf("unknown fields should be caught loudly, got %v", err)
+		t.Fatalf("broken JSON should be rejected loudly, got %v", err)
 	}
 }
 

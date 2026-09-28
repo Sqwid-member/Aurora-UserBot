@@ -234,6 +234,10 @@ func Open(path string, log *logx.Logger) (*Store, error) {
 	raw, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
+		// Normalize before the first save: a fresh install must already carry
+		// the default account, otherwise the core starts with no Telegram
+		// runtime at all and every auth call dereferences a nil client.
+		s.cfg.normalize()
 		if err := s.save(); err != nil {
 			return nil, err
 		}
@@ -243,9 +247,9 @@ func Open(path string, log *logx.Logger) (*Store, error) {
 	}
 
 	cfg := Default()
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(cfg); err != nil {
+	// Tolerant reader: unknown fields must not brick the core after
+	// update/downgrade. Strictness belongs in `aurora config check`, not here.
+	if err := json.Unmarshal(raw, cfg); err != nil {
 		return nil, fmt.Errorf("config %s is invalid: %w", path, err)
 	}
 	cfg.normalize()
@@ -260,15 +264,31 @@ func (s *Store) Path() string { return s.path }
 func (s *Store) Get() Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return *s.cfg
+	out := *s.cfg
+	// Deep-copy slices: the caller must not share backing arrays with the
+	// store, otherwise ToggleAccountPlugin races with concurrent readers.
+	out.Accounts = append([]AccountConfig(nil), s.cfg.Accounts...)
+	out.Plugins.Disabled = append([]string(nil), s.cfg.Plugins.Disabled...)
+	for i := range out.Accounts {
+		out.Accounts[i].EnabledPlugins = append([]string(nil), s.cfg.Accounts[i].EnabledPlugins...)
+	}
+	return out
 }
 
 // Update mutates the config under lock and persists the result.
-func (s *Store) Update(fn func(*Config)) error {
+func (s *Store) Update(fn func(*Config)) (err error) {
 	s.mu.Lock()
+	defer func() {
+		if r := recover(); r != nil {
+			s.mu.Unlock()
+			panic(r)
+		}
+	}()
 	fn(s.cfg)
 	s.cfg.normalize()
 	c := *s.cfg
+	c.Accounts = append([]AccountConfig(nil), s.cfg.Accounts...)
+	c.Plugins.Disabled = append([]string(nil), s.cfg.Plugins.Disabled...)
 	s.mu.Unlock()
 	return s.write(c)
 }
@@ -306,6 +326,14 @@ func (s *Store) write(c Config) error {
 func (c *Config) normalize() {
 	d := Default()
 
+	// Migrate installs that pinned the retired Telegram Desktop credentials:
+	// Telegram now answers API_ID_INVALID for them, so fall back to the
+	// working defaults instead of silently breaking the login flow.
+	if c.Telegram.AppID == 2040 && strings.EqualFold(strings.TrimSpace(c.Telegram.AppHash), "b1844f235887e4c988483c31679563b1") {
+		c.Telegram.AppID = 0
+		c.Telegram.AppHash = ""
+	}
+
 	if c.Version == 0 {
 		c.Version = Version
 	}
@@ -330,7 +358,9 @@ func (c *Config) normalize() {
 	if c.Web.Port <= 0 || c.Web.Port > 65535 {
 		c.Web.Port = d.Web.Port
 	}
-	if len(c.Web.Token) < 16 {
+	// Only generate when empty: silently replacing a short-but-explicit
+	// user token breaks every saved panel link on next save.
+	if len(c.Web.Token) == 0 {
 		c.Web.Token = NewToken()
 	}
 	if c.Runtime.LogLevel == "" {
@@ -350,6 +380,14 @@ func (c *Config) normalize() {
 	}
 	if c.Plugins.Disabled == nil {
 		c.Plugins.Disabled = []string{}
+	}
+
+	for i := range c.Accounts {
+		acc := &c.Accounts[i]
+		if acc.AppID == 2040 && strings.EqualFold(strings.TrimSpace(acc.AppHash), "b1844f235887e4c988483c31679563b1") {
+			acc.AppID = 0
+			acc.AppHash = ""
+		}
 	}
 
 	if len(c.Accounts) == 0 {
@@ -380,10 +418,13 @@ func (c *Config) normalize() {
 }
 
 const (
-	// DefaultAppID is the standard official Telegram Desktop client API ID.
-	DefaultAppID = 2040
-	// DefaultAppHash is the standard official Telegram Desktop client API hash.
-	DefaultAppHash = "b1844f235887e4c988483c31679563b1"
+	// DefaultAppID is the public API ID of the official Telegram Web client.
+	// Telegram rejects the old Telegram Desktop ID (2040) for new logins with
+	// API_ID_INVALID, so the working Web credentials are the sane default.
+	// Users can (and for serious use should) override them with `aurora setup`.
+	DefaultAppID = 611335
+	// DefaultAppHash is the matching public API hash.
+	DefaultAppHash = "d524b414d21f4d37f08684c1df41ac9c"
 )
 
 // EffectiveAppID returns the user-configured AppID or DefaultAppID if unset.

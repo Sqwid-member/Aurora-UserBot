@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
@@ -24,9 +25,21 @@ type statusResponse struct {
 }
 
 type pluginItem struct {
-	Name    string `json:"name"`
-	Running bool   `json:"running"`
-	Desc    string `json:"description"`
+	Name string `json:"name"`
+	Desc string `json:"description"`
+	// State is the runtime state reported by the plugin host
+	// (running, starting, stopping, stopped, failed, created).
+	State string `json:"state"`
+	// Running is kept for older payloads that report a boolean directly.
+	Running bool `json:"running"`
+}
+
+// isRunning reports whether the plugin instance is currently up.
+func (p pluginItem) isRunning() bool {
+	if p.Running {
+		return true
+	}
+	return strings.EqualFold(p.State, "running")
 }
 
 type daemonClient struct {
@@ -139,6 +152,36 @@ func (c *daemonClient) submitCode(code string) error {
 	return c.request("POST", "/api/auth/code", map[string]string{"code": code}, nil)
 }
 
+// requestCodeSMS asks Telegram to deliver the code over SMS.
+func (c *daemonClient) requestCodeSMS(phone string) error {
+	return c.request("POST", "/api/auth/code-request/sms", map[string]string{"phone": phone}, nil)
+}
+
+// resendCode asks Telegram to deliver the login code again, usually via SMS.
+func (c *daemonClient) resendCode() error {
+	return c.request("POST", "/api/auth/resend", nil, nil)
+}
+
+// startQR asks the core to export a login token.
+func (c *daemonClient) startQR() error {
+	return c.request("POST", "/api/auth/qr", nil, nil)
+}
+
+// qrState reports the token waiting for approval.
+func (c *daemonClient) qrState() (web.QRState, error) {
+	var st web.QRState
+	err := c.request("GET", "/api/auth/qr", nil, &st)
+	return st, err
+}
+
+// signUp registers a phone number that Telegram does not know yet.
+func (c *daemonClient) signUp(firstName, lastName string) error {
+	return c.request("POST", "/api/auth/signup", map[string]string{
+		"first_name": firstName,
+		"last_name":  lastName,
+	}, nil)
+}
+
 func (c *daemonClient) submitPassword(password string) error {
 	return c.request("POST", "/api/auth/password", map[string]string{"password": password}, nil)
 }
@@ -151,10 +194,30 @@ func (c *daemonClient) logout() error {
 	return c.request("POST", "/api/logout", nil, nil)
 }
 
+// getPlugins reads the plugin list. The panel returns an object wrapper
+// ({"plugins": [...], "events": [...]}) while older builds returned a bare
+// array, so both shapes are accepted.
 func (c *daemonClient) getPlugins() ([]pluginItem, error) {
+	var raw json.RawMessage
+	if err := c.request("GET", "/api/plugins", nil, &raw); err != nil {
+		return nil, err
+	}
 	var items []pluginItem
-	err := c.request("GET", "/api/plugins", nil, &items)
-	return items, err
+	if err := json.Unmarshal(raw, &items); err == nil {
+		return items, nil
+	}
+	var wrapped struct {
+		Plugins []pluginItem `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		return wrapped.Plugins, nil
+	}
+	return nil, errors.New("неочікувана відповідь /api/plugins")
+}
+
+// pluginAction starts or stops a plugin by name.
+func (c *daemonClient) pluginAction(name, action string) error {
+	return c.request("POST", fmt.Sprintf("/api/plugins/%s/%s", name, action), nil, nil)
 }
 
 func (c *daemonClient) togglePlugin(accountID, pluginName string) error {

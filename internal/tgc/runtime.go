@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/html"
@@ -55,6 +57,11 @@ type Options struct {
 	OnEvent func(name string, data any)
 }
 
+// ErrSignupRequired is returned by SubmitCode when Telegram reports the
+// number is not registered yet: the caller has to collect a name and call
+// SubmitSignup to create the account.
+var ErrSignupRequired = errors.New("цей номер ще не зареєстровано в Telegram — введіть ім'я для реєстрації")
+
 // AuthStep describes what the login flow is currently waiting for.
 type AuthStep = proto.AuthStep
 
@@ -63,6 +70,7 @@ const (
 	AuthNone     = proto.AuthNone
 	AuthPhone    = proto.AuthPhone
 	AuthCode     = proto.AuthCode
+	AuthSignup   = proto.AuthSignup
 	AuthPassword = proto.AuthPassword
 	AuthSignedIn = proto.AuthSignedIn
 )
@@ -80,9 +88,32 @@ type Runtime struct {
 	state  proto.SessionState
 	lastEr string
 	step   AuthStep
+	// connected reports that the MTProto client is inside its Run callback,
+	// i.e. the connection is up and RPCs can be issued. It is the gate the
+	// login flow waits on before talking to Telegram.
+	connected bool
+
+	// dispatcher sees raw updates so the QR login flow can listen for
+	// UpdateLoginToken alongside the plugin-facing message stream.
+	dispatcher *tg.UpdateDispatcher
+
+	// qrURL is the last exported login token, shown to the user so an already
+	// authorized Telegram app can approve this session.
+	qrURL     string
+	qrExpires time.Time
+	qrRunning bool
 
 	codeHash string
-	authDone chan struct{}
+	// codeInfo is a human-readable description of where Telegram delivered
+	// the last login code (SMS, app, call, ...).
+	codeInfo string
+	// codeNext is the channel Telegram will switch to if the code is not
+	// entered within codeWait seconds, and codeNextAt is when that becomes
+	// possible (auth.resendCode only works after the timeout).
+	codeNext   string
+	codeWait   time.Duration
+	codeNextAt time.Time
+	authDone   chan struct{}
 
 	namesMu sync.RWMutex
 	names   map[int64]proto.PeerInfo
@@ -138,6 +169,46 @@ func (r *Runtime) Ready() bool {
 	return r.sender != nil && r.state == proto.StateAuthorized
 }
 
+// Connected reports whether the MTProto link is up. Login steps must not be
+// issued before this is true, otherwise the RPC fails or blocks forever.
+func (r *Runtime) Connected() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.connected
+}
+
+func (r *Runtime) setConnected(v bool) {
+	r.mu.Lock()
+	r.connected = v
+	r.mu.Unlock()
+}
+
+// waitConnected blocks until the client is inside its Run callback or the
+// timeout/context expires. It turns the classic "клієнт ще підключається"
+// dead end into a short, bounded wait.
+func (r *Runtime) waitConnected(ctx context.Context, timeout time.Duration) error {
+	if r.Connected() {
+		return nil
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+		if r.Connected() {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if last := r.LastError(); last != "" {
+				return fmt.Errorf("ядро Telegram не підключилося: %s", last)
+			}
+			return errors.New("ядро Telegram не підключилося до серверів — перевірте мережу та 'aurora logs'")
+		}
+	}
+}
+
 func (r *Runtime) setState(s proto.SessionState, err string) {
 	r.mu.Lock()
 	changed := r.state != s
@@ -163,7 +234,18 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 
-	var sink telegram.UpdateHandler = telegram.UpdateHandlerFunc(r.handleUpdates)
+	disp := tg.NewUpdateDispatcher()
+	r.mu.Lock()
+	r.dispatcher = &disp
+	r.mu.Unlock()
+
+	sink := telegram.UpdateHandlerFunc(func(ctx context.Context, u tg.UpdatesClass) error {
+		// The QR flow needs the raw updates; plugins need the parsed ones.
+		if err := disp.Handle(ctx, u); err != nil {
+			return err
+		}
+		return r.handleUpdates(ctx, u)
+	})
 
 	client := telegram.NewClient(r.opts.AppID, r.opts.AppHash, telegram.Options{
 		Resolver: resolver,
@@ -187,11 +269,17 @@ func (r *Runtime) Run(ctx context.Context) error {
 			r.log.Debug("connection state", logx.F("state", s.String()))
 		},
 		OnSelfError: func(ctx context.Context, err error) error {
+			// gotd calls Self() right after the connection comes up. Before the
+			// first login that always fails with AUTH_KEY_UNREGISTERED — it is
+			// the normal state, not a reason to tear the client down. Returning
+			// an error here aborts client.Run, which used to kill the runtime
+			// seconds after start and made login impossible.
 			if r.isAuthError(err) {
-				// Not being authorized is normal before the first login.
-				return nil
+				r.log.Debug("self check: not authorized yet", logx.F("error", errString(err)))
+			} else if err != nil {
+				r.log.Debug("self check failed", logx.F("error", errString(err)))
 			}
-			return err
+			return nil
 		},
 		OnDead: func(err error) {
 			r.log.Warn("connection lost", logx.F("error", err))
@@ -204,8 +292,15 @@ func (r *Runtime) Run(ctx context.Context) error {
 	r.mu.Unlock()
 
 	r.setState(proto.StateConnecting, "")
+	// From here on the client object exists, but RPCs are only safe once the
+	// Run callback fires: that is the point gotd reports "session init done".
+	r.setConnected(false)
+	defer r.setConnected(false)
 
 	return client.Run(ctx, func(ctx context.Context) error {
+		r.setConnected(true)
+		defer r.setConnected(false)
+
 		aclient := client.Auth()
 		status, err := aclient.Status(ctx)
 		if err == nil && status.Authorized {
@@ -238,8 +333,17 @@ func (r *Runtime) isAuthError(err error) bool {
 	if err == nil {
 		return false
 	}
+	if auth.IsUnauthorized(err) {
+		return true
+	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "auth key") || strings.Contains(msg, "unauthorized")
+	// Telegram writes AUTH_KEY_UNREGISTERED; keep both spellings covered.
+	for _, key := range []string{"auth key", "auth_key", "unauthorized", "unauthorised"} {
+		if strings.Contains(msg, key) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Runtime) serve(ctx context.Context) error {
@@ -302,19 +406,17 @@ func CleanPhone(phone string) string {
 	if s == "" {
 		return ""
 	}
-	if strings.HasPrefix(s, "0") && len(s) == 10 {
-		return "+38" + s
+	// Generic E.164: keep an explicit "+", expand "00" prefix, otherwise
+	// assume the digits are already a full international number.
+	// No country-specific rewrites (the old 0→+38 / 48→+48 branches broke
+	// every other country).
+	if strings.HasPrefix(s, "+") {
+		return s
 	}
-	if strings.HasPrefix(s, "380") {
-		return "+" + s
+	if strings.HasPrefix(s, "00") && len(s) > 2 {
+		return "+" + s[2:]
 	}
-	if strings.HasPrefix(s, "48") && len(s) == 11 {
-		return "+" + s
-	}
-	if !strings.HasPrefix(s, "+") {
-		return "+" + s
-	}
-	return s
+	return "+" + s
 }
 
 func translateTelegramErr(err error) error {
@@ -338,9 +440,134 @@ func translateTelegramErr(err error) error {
 		return errors.New("Telegram відхилив API ключі (API_ID_INVALID). Виконайте 'aurora setup' для власних ключів")
 	case strings.Contains(u, "PHONE_NUMBER_BANNED"):
 		return errors.New("цей номер телефону заблоковано в Telegram")
+	case strings.Contains(u, "SEND_CODE_UNAVAILABLE"):
+		return errors.New("Telegram не може надіслати код іншим способом для цього номера — код приходить лише в застосунок Telegram. Якщо акаунт не відкрито на жодному пристрої, вкажіть власні API ключі (aurora setup)")
+	case strings.Contains(u, "PHONE_NUMBER_UNOCCUPLICATED"):
+		return errors.New("цей номер не зареєстрований у Telegram — потрібно створити акаунт (введіть ім'я)")
+	case strings.Contains(u, "FIRST_NAME_INVALID"), strings.Contains(u, "NAME_INVALID"):
+		return errors.New("некоректне ім'я — вкажіть від 1 до 64 символів")
 	default:
 		return err
 	}
+}
+
+// RequestCodeSMS asks for the login code over SMS even when Telegram's first
+// choice is the in-app delivery. It sends the raw auth.sendCode with
+// codeSettings that claim the number is unknown, which is what makes
+// Telegram fall back to SMS / a phone call. Needed for numbers whose code
+// would otherwise be delivered only into an app session that is not open.
+func (r *Runtime) RequestCodeSMS(ctx context.Context, phone string) error {
+	phone = CleanPhone(phone)
+	if phone == "" {
+		return errors.New("номер телефону не може бути порожнім")
+	}
+	if r.Step() == AuthSignedIn {
+		return errors.New("акаунт уже авторизовано")
+	}
+
+	r.mu.Lock()
+	r.opts.Phone = phone
+	client := r.client
+	appID, appHash := r.opts.AppID, r.opts.AppHash
+	r.mu.Unlock()
+
+	if client == nil {
+		return errors.New("ядро Telegram ще не запущено")
+	}
+	if err := r.waitConnected(ctx, 30*time.Second); err != nil {
+		return err
+	}
+
+	var settings tg.CodeSettings
+	settings.SetAllowAppHash(true)
+	settings.SetUnknownNumber(true)
+	settings.SetAllowMissedCall(true)
+	settings.SetAllowFlashcall(true)
+	settings.SetAllowFirebase(true)
+
+	r.log.Info("requesting login code via sms", logx.F("phone", maskPhone(phone)))
+	sent, err := client.API().AuthSendCode(ctx, &tg.AuthSendCodeRequest{
+		PhoneNumber: phone,
+		APIID:       appID,
+		APIHash:     appHash,
+		Settings:    settings,
+	})
+	if err != nil {
+		r.mu.Lock()
+		r.step = AuthPhone
+		r.codeHash = ""
+		r.mu.Unlock()
+		return translateTelegramErr(err)
+	}
+	return r.acceptSentCode(sent)
+}
+
+// acceptSentCode stores the result of auth.sendCode and moves the flow on.
+func (r *Runtime) acceptSentCode(sent tg.AuthSentCodeClass) error {
+	if sent == nil {
+		return errors.New("Telegram не повернув відповідь на запит коду")
+	}
+	if suc, ok := sent.(*tg.AuthSentCodeSuccess); ok {
+		if _, ok := suc.Authorization.(*tg.AuthAuthorization); ok {
+			r.markSignedIn()
+			return nil
+		}
+	}
+	sc, ok := sent.(*tg.AuthSentCode)
+	if !ok {
+		return fmt.Errorf("неочікувана відповідь від Telegram: %T", sent)
+	}
+
+	info := sentCodeChannel(sc.Type, sc.NextType, sc.Timeout)
+	wait := time.Duration(sc.Timeout) * time.Second
+	if wait <= 0 {
+		wait = 60 * time.Second
+	}
+	next := codeTypeName(sc.NextType)
+
+	r.mu.Lock()
+	r.codeHash = sc.PhoneCodeHash
+	r.codeInfo = info
+	r.codeWait = wait
+	r.codeNext = next
+	r.codeNextAt = time.Now().Add(wait)
+	r.step = AuthCode
+	r.mu.Unlock()
+
+	r.log.Info("login code sent",
+		logx.F("via", info),
+		logx.F("next", next),
+		logx.F("wait", wait.String()))
+	return nil
+}
+
+// CodeAppOnly reports the dead-end Telegram hands third-party clients: the
+// code went to the in-app service chat of other sessions and there is no
+// next channel to fall back to. Since 18.02.2023 Telegram no longer sends
+// SMS codes to third-party clients at all, so a number whose account has no
+// active session cannot be verified from here — the session has to be
+// imported instead (see ImportSession).
+func (r *Runtime) CodeAppOnly() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.step == AuthCode && r.codeNext == "" &&
+		strings.Contains(r.codeInfo, "застосунок")
+}
+
+// CodeNext reports the channel Telegram will fall back to and when the
+// fallback becomes available.
+func (r *Runtime) CodeNext() (string, time.Time) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.codeNext, r.codeNextAt
+}
+
+// codeTypeName renders auth.codeType so the UI can show the next channel.
+func codeTypeName(t tg.AuthCodeTypeClass) string {
+	if t == nil {
+		return ""
+	}
+	return channelName(t.TypeName())
 }
 
 // RequestCode initiates login by sending a verification code to the phone number.
@@ -349,6 +576,9 @@ func (r *Runtime) RequestCode(ctx context.Context, phone string) error {
 	if phone == "" {
 		return errors.New("номер телефону не може бути порожнім")
 	}
+	if r.Step() == AuthSignedIn {
+		return errors.New("акаунт вже авторизовано")
+	}
 
 	r.mu.Lock()
 	r.opts.Phone = phone
@@ -356,31 +586,94 @@ func (r *Runtime) RequestCode(ctx context.Context, phone string) error {
 	r.mu.Unlock()
 
 	if client == nil {
-		return errors.New("Telegram клієнт ще підключається... Зачекайте пару секунд")
+		return errors.New("ядро Telegram ще не запущено — зачекайте кілька секунд")
+	}
+	// The connection comes up asynchronously; asking for a code before it is
+	// up fails with a confusing "not connected" error.
+	if err := r.waitConnected(ctx, 30*time.Second); err != nil {
+		return err
 	}
 
 	aclient := client.Auth()
 	r.log.Info("requesting login code", logx.F("phone", maskPhone(phone)))
 
-	sent, err := aclient.SendCode(ctx, phone, auth.SendCodeOptions{AllowAppHash: true})
+	// AllowAppHash lets the standard public keys work; AllowFlashCall keeps
+	// the phone-call channel open for numbers that cannot receive SMS.
+	sent, err := aclient.SendCode(ctx, phone, auth.SendCodeOptions{
+		AllowAppHash:   true,
+		AllowFlashCall: true,
+	})
 	if err != nil {
 		r.mu.Lock()
 		r.step = AuthPhone
+		r.codeHash = ""
 		r.mu.Unlock()
 		return translateTelegramErr(err)
 	}
 
 	sc, ok := sent.(*tg.AuthSentCode)
 	if !ok {
+		// auth.SentCodeSuccess means Telegram already knows this session.
+		if suc, ok := sent.(*tg.AuthSentCodeSuccess); ok {
+			if _, ok := suc.Authorization.(*tg.AuthAuthorization); ok {
+				r.markSignedIn()
+				return nil
+			}
+		}
 		return fmt.Errorf("неочікувана відповідь від Telegram: %T", sent)
 	}
 
+	info := sentCodeChannel(sc.Type, sc.NextType, sc.Timeout)
 	r.mu.Lock()
 	r.codeHash = sc.PhoneCodeHash
+	r.codeInfo = info
 	r.step = AuthCode
 	r.mu.Unlock()
+	r.log.Info("login code sent", logx.F("via", info))
 
 	return nil
+}
+
+// CodeInfo describes where Telegram delivered the last login code.
+func (r *Runtime) CodeInfo() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.codeInfo
+}
+
+// sentCodeChannel renders where Telegram delivered the login code, so the
+// user knows whether to look in the Telegram app, SMS or a phone call.
+func sentCodeChannel(t tg.AuthSentCodeTypeClass, next tg.AuthCodeTypeClass, timeout int) string {
+	info := channelName(t.TypeName())
+	if next != nil {
+		info += fmt.Sprintf(" → далі %s (≈%d c)", channelName(next.TypeName()), timeout)
+	}
+	return info
+}
+
+func channelName(typeName string) string {
+	short := typeName
+	for _, p := range []string{"auth.sentCodeType", "auth.codeType"} {
+		short = strings.TrimPrefix(short, p)
+	}
+	switch short {
+	case "App":
+		return "застосунок Telegram (службовий чат)"
+	case "Sms", "FirebaseSms":
+		return "SMS"
+	case "FragmentSms":
+		return "SMS (Fragment)"
+	case "Call":
+		return "дзвінок"
+	case "FlashCall":
+		return "flash-дзвінок"
+	case "MissedCall":
+		return "пропущений дзвінок"
+	case "EmailCode", "SetUpEmailRequired":
+		return "email"
+	default:
+		return typeName
+	}
 }
 
 // Phone returns the configured phone number.
@@ -417,7 +710,14 @@ func (r *Runtime) SubmitCode(code string) error {
 	r.mu.RUnlock()
 
 	if client == nil {
-		return errors.New("клієнт Telegram не підключено")
+		return errors.New("ядро Telegram ще не запущено")
+	}
+	if codeHash == "" {
+		return errors.New("код ще не запитувався — спочатку введіть номер телефону")
+	}
+
+	if err := r.waitConnected(context.Background(), 30*time.Second); err != nil {
+		return err
 	}
 
 	aclient := client.Auth()
@@ -427,13 +727,7 @@ func (r *Runtime) SubmitCode(code string) error {
 	_, signErr := aclient.SignIn(ctx, phone, code, codeHash)
 	switch {
 	case signErr == nil:
-		r.mu.Lock()
-		r.step = AuthSignedIn
-		r.mu.Unlock()
-		select {
-		case r.authDone <- struct{}{}:
-		default:
-		}
+		r.markSignedIn()
 		return nil
 	case errors.Is(signErr, auth.ErrPasswordAuthNeeded) || strings.Contains(strings.ToUpper(signErr.Error()), "SESSION_PASSWORD_NEEDED"):
 		r.log.Info("two-factor password required")
@@ -442,10 +736,171 @@ func (r *Runtime) SubmitCode(code string) error {
 	default:
 		var needSignUp *auth.SignUpRequired
 		if errors.As(signErr, &needSignUp) {
-			return errors.New("цей номер не зареєстрований у Telegram")
+			// The number is not registered yet: Telegram wants a profile
+			// before it will create the account.
+			r.log.Info("phone not registered, sign-up required", logx.F("phone", maskPhone(phone)))
+			r.setStep(AuthSignup)
+			return ErrSignupRequired
 		}
 		return translateTelegramErr(signErr)
 	}
+}
+
+// QRToken returns the login-token link currently waiting for approval.
+func (r *Runtime) QRToken() (string, time.Time, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.qrURL == "" || time.Now().After(r.qrExpires) {
+		return "", time.Time{}, false
+	}
+	return r.qrURL, r.qrExpires, r.qrRunning
+}
+
+// StartQR exports a login token and waits until it is approved in an already
+// authorized Telegram app. It is the only way in for numbers that cannot
+// receive SMS, and it never touches the phone number at all.
+func (r *Runtime) StartQR(ctx context.Context) error {
+	r.mu.RLock()
+	client := r.client
+	r.mu.RUnlock()
+
+	if client == nil {
+		return errors.New("ядро Telegram ще не запущено")
+	}
+	if err := r.waitConnected(ctx, 30*time.Second); err != nil {
+		return err
+	}
+
+	r.mu.RLock()
+	disp := r.dispatcher
+	r.mu.RUnlock()
+	if disp == nil {
+		return errors.New("qr-вхід недоступний: оновлення ядра ще не запущені")
+	}
+
+	r.mu.Lock()
+	if r.qrRunning {
+		r.mu.Unlock()
+		return nil
+	}
+	r.qrRunning = true
+	r.qrURL = ""
+	r.step = AuthCode
+	r.mu.Unlock()
+
+	loggedIn := qrlogin.OnLoginToken(*disp)
+
+	r.log.Info("qr login started")
+	_, err := client.QR().Auth(ctx, loggedIn, func(_ context.Context, token qrlogin.Token) error {
+		r.mu.Lock()
+		r.qrURL = token.URL()
+		r.qrExpires = token.Expires()
+		r.mu.Unlock()
+		r.log.Info("qr login token exported", logx.F("expires", r.qrExpires.Format(time.RFC3339)))
+		return nil
+	})
+
+	r.mu.Lock()
+	r.qrRunning = false
+	r.qrURL = ""
+	r.mu.Unlock()
+
+	if err != nil {
+		if ctx.Err() != nil {
+			return errors.New("qr-вхід скасовано або вичерпав час")
+		}
+		return translateTelegramErr(err)
+	}
+	r.markSignedIn()
+	return nil
+}
+
+// ResendCode asks Telegram to deliver the login code again, usually through
+// the next available channel (SMS or a phone call). Users whose code stays
+// in the app need this to break out of that loop.
+func (r *Runtime) ResendCode(ctx context.Context) error {
+	r.mu.RLock()
+	client := r.client
+	phone := r.opts.Phone
+	codeHash := r.codeHash
+	r.mu.RUnlock()
+
+	if client == nil {
+		return errors.New("ядро Telegram ще не запущено")
+	}
+	if codeHash == "" {
+		return errors.New("код ще не запитувався — спочатку введіть номер телефону")
+	}
+	if err := r.waitConnected(ctx, 30*time.Second); err != nil {
+		return err
+	}
+
+	r.mu.RLock()
+	nextAt := r.codeNextAt
+	nextCh := r.codeNext
+	r.mu.RUnlock()
+	if !nextAt.IsZero() && time.Now().Before(nextAt) {
+		return fmt.Errorf("Telegram ще не готовий наступний канал (%s) — зачекайте до %s",
+			nextCh, nextAt.Format("15:04:05"))
+	}
+
+	sent, err := client.Auth().ResendCode(ctx, phone, codeHash)
+	if err != nil {
+		if errors.Is(err, auth.ErrPasswordAuthNeeded) {
+			r.setStep(AuthPassword)
+			return errors.New("SESSION_PASSWORD_NEEDED")
+		}
+		return translateTelegramErr(err)
+	}
+	if _, ok := sent.(*tg.AuthSentCodeSuccess); ok {
+		// Telegram accepted the session without a code this time.
+		r.markSignedIn()
+		return nil
+	}
+	return r.acceptSentCode(sent)
+}
+
+// SubmitSignup registers a phone number that Telegram does not know yet.
+// The code entered at the previous step has already been accepted; this
+// creates the account with the given profile.
+func (r *Runtime) SubmitSignup(firstName, lastName string) error {
+	firstName = strings.TrimSpace(firstName)
+	lastName = strings.TrimSpace(lastName)
+	if firstName == "" {
+		return errors.New("ім'я не може бути порожнім")
+	}
+
+	r.mu.RLock()
+	client := r.client
+	phone := r.opts.Phone
+	codeHash := r.codeHash
+	r.mu.RUnlock()
+
+	if client == nil {
+		return errors.New("ядро Telegram ще не запущено")
+	}
+	if codeHash == "" {
+		return errors.New("код ще не підтверджено — спочатку введіть код із Telegram")
+	}
+	if err := r.waitConnected(context.Background(), 30*time.Second); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	r.log.Info("registering new account", logx.F("name", firstName))
+	_, err := client.Auth().SignUp(ctx, auth.SignUp{
+		PhoneNumber:   phone,
+		PhoneCodeHash: codeHash,
+		FirstName:     firstName,
+		LastName:      lastName,
+	})
+	if err != nil {
+		return translateTelegramErr(err)
+	}
+	r.markSignedIn()
+	return nil
 }
 
 // SubmitPassword hands the 2FA password to Telegram.
@@ -460,7 +915,10 @@ func (r *Runtime) SubmitPassword(pass string) error {
 	r.mu.RUnlock()
 
 	if client == nil {
-		return errors.New("клієнт Telegram не підключено")
+		return errors.New("ядро Telegram ще не запущено")
+	}
+	if err := r.waitConnected(context.Background(), 30*time.Second); err != nil {
+		return err
 	}
 
 	aclient := client.Auth()
@@ -471,18 +929,21 @@ func (r *Runtime) SubmitPassword(pass string) error {
 		return translateTelegramErr(err)
 	}
 
+	r.markSignedIn()
+	return nil
+}
+
+// markSignedIn records a successful login and wakes the Run loop so it can
+// move on to serving the session.
+func (r *Runtime) markSignedIn() {
 	r.mu.Lock()
 	r.step = AuthSignedIn
 	r.mu.Unlock()
-
 	select {
 	case r.authDone <- struct{}{}:
 	default:
 	}
-	return nil
 }
-
-
 
 // Logout terminates the current Telegram session and drops the local one.
 func (r *Runtime) Logout(ctx context.Context) error {
@@ -600,8 +1061,11 @@ func (r *Runtime) History(ctx context.Context, ref string, limit int) ([]proto.M
 	if client == nil || !r.Ready() {
 		return nil, errors.New("tgc: session is not ready")
 	}
-	if limit <= 0 || limit > 100 {
+	if limit <= 0 {
 		limit = 20
+	}
+	if limit > 100 {
+		return nil, fmt.Errorf("tgc: limit %d exceeds Telegram maximum of 100", limit)
 	}
 	peer, err := r.resolvePeer(ctx, ref)
 	if err != nil {
@@ -659,6 +1123,9 @@ func (r *Runtime) resolvePeer(ctx context.Context, ref string) (peers.Peer, erro
 	r.mu.RLock()
 	pm := r.pman
 	r.mu.RUnlock()
+	if pm == nil {
+		return nil, errors.New("tgc: peer manager is not ready yet — зачекайте кілька секунд")
+	}
 
 	s := strings.TrimSpace(ref)
 	if s == "" {
@@ -671,10 +1138,23 @@ func (r *Runtime) resolvePeer(ctx context.Context, ref string) (peers.Peer, erro
 	s = strings.TrimPrefix(s, "@")
 
 	if id, err := parseID(s); err == nil {
+		// Telegram channel IDs are often written as -1001234567890.
+		// Strip the -100 prefix so cache lookup sees the bare ID.
+		bare := id
+		if bare < 0 && bare <= -1000000000000 {
+			if v := -(bare + 1000000000000); v > 0 {
+				bare = v
+			}
+		}
 		// Try the most specific interpretation first: channels, chats, users.
 		if id < 0 {
 			if p, err := pm.ResolveChannelID(ctx, -id); err == nil {
 				return p, nil
+			}
+			if bare != id {
+				if p, err := pm.ResolveChannelID(ctx, bare); err == nil {
+					return p, nil
+				}
 			}
 		} else {
 			if p, err := pm.ResolveChannelID(ctx, id); err == nil {
@@ -841,20 +1321,27 @@ func (r *Runtime) resolver() (dcs.Resolver, error) {
 	return dcs.Plain(opts), nil
 }
 
-// parseMTProxy accepts "host:port:hexsecret" or "tcp+secret://hex@host:port".
+// parseMTProxy accepts "host:port:hexsecret" or "scheme://hex@host:port".
 func parseMTProxy(s string) (addr string, secret []byte, err error) {
+	s = strings.TrimSpace(s)
 	if strings.Contains(s, "://") {
-		host := s
+		// Split scheme off first: "tcp+secret://hex@host:port".
+		rest := s[strings.Index(s, "://")+3:]
 		sec := ""
-		if i := strings.LastIndex(s, "@"); i >= 0 {
-			sec, host = s[i+1:], s[:i]
+		host := rest
+		if i := strings.LastIndex(rest, "@"); i >= 0 {
+			sec, host = rest[:i], rest[i+1:]
 		}
-		host = strings.TrimPrefix(host, "//")
 		if i := strings.Index(host, "/"); i >= 0 {
 			host = host[:i]
 		}
+		host = strings.TrimSpace(host)
+		sec = strings.TrimSpace(sec)
 		if host == "" {
 			return "", nil, errors.New("mtproxy: cannot parse address from " + s)
+		}
+		if _, _, err := net.SplitHostPort(host); err != nil {
+			return "", nil, fmt.Errorf("mtproxy address: %w", err)
 		}
 		secret, err = hex.DecodeString(sec)
 		if err != nil {
@@ -862,16 +1349,12 @@ func parseMTProxy(s string) (addr string, secret []byte, err error) {
 		}
 		return host, secret, nil
 	}
-	parts := strings.SplitN(s, ":", 2)
-	if len(parts) != 2 {
+	parts := strings.SplitN(s, ":", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return "", nil, errors.New("mtproxy: expected host:port:hexsecret")
 	}
 	addr = parts[0] + ":" + parts[1]
-	hexPart := ""
-	if i := strings.Index(s, parts[1]+":"); i >= 0 {
-		hexPart = s[i+len(parts[1])+1:]
-	}
-	secret, err = hex.DecodeString(hexPart)
+	secret, err = hex.DecodeString(strings.TrimSpace(parts[2]))
 	if err != nil {
 		return "", nil, fmt.Errorf("mtproxy secret: %w", err)
 	}

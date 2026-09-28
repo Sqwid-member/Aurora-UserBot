@@ -18,10 +18,10 @@ import (
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
-	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 )
 
 // AuthState is the login state the panel renders.
@@ -31,6 +31,22 @@ type AuthState struct {
 	HasHint  bool           `json:"hint"`
 	Message  string         `json:"message,omitempty"`
 	SignedIn bool           `json:"signed_in"`
+	// Connected reports that the MTProto link is up: the CLI and the panel
+	// wait for it before offering the first login step.
+	Connected bool `json:"connected"`
+	// AppOnly is set when Telegram delivered the code to other app sessions
+	// and offers no SMS/call fallback: a third-party client cannot receive
+	// it, so the session has to be imported from an official client.
+	AppOnly bool               `json:"app_only"`
+	Session proto.SessionState `json:"session,omitempty"`
+}
+
+// QRState describes the login token currently waiting for approval in an
+// already authorized Telegram app.
+type QRState struct {
+	URL     string    `json:"url,omitempty"`
+	Expires time.Time `json:"expires,omitempty"`
+	Running bool      `json:"running"`
 }
 
 // Backend is everything the control panel needs from the core.
@@ -61,8 +77,18 @@ type Backend interface {
 	AuthForAccount(accID string) AuthState
 	RequestCode(ctx context.Context, phone string) error
 	RequestCodeForAccount(ctx context.Context, accID string, phone string) error
+	RequestCodeSMS(ctx context.Context, phone string) error
+	RequestCodeSMSForAccount(ctx context.Context, accID string, phone string) error
 	SubmitCode(code string) error
 	SubmitCodeForAccount(accID string, code string) error
+	SignUp(firstName, lastName string) error
+	SignUpForAccount(accID string, firstName, lastName string) error
+	ResendCode(ctx context.Context) error
+	ResendCodeForAccount(ctx context.Context, accID string) error
+	StartQRLogin(ctx context.Context) error
+	StartQRLoginForAccount(ctx context.Context, accID string) error
+	QRState() QRState
+	QRStateForAccount(accID string) QRState
 	SubmitPassword(password string) error
 	SubmitPasswordForAccount(accID string, password string) error
 	Session() proto.SessionInfo
@@ -78,6 +104,7 @@ type Backend interface {
 
 	Notify(title, text, level string)
 	Shutdown(ctx context.Context) error
+	Restart(ctx context.Context) error
 }
 
 // Options configures the panel server.
@@ -134,6 +161,10 @@ func (s *Server) Start() error {
 	}
 	s.url = "http://" + display
 
+	if s.opts.Host == "0.0.0.0" || s.opts.Host == "::" {
+		s.log.Warn("panel listens on all interfaces — LAN devices will reach the login page; keep a strong web.token")
+	}
+
 	mux := http.NewServeMux()
 	s.routes(mux)
 	s.srv = &http.Server{
@@ -177,7 +208,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/accounts/{id}", s.handleDeleteAccount)
 	mux.HandleFunc("POST /api/accounts/{id}/plugins/{name}/toggle", s.handleToggleAccountPlugin)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/code-request", s.handleAccountCodeRequest)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/code-request/sms", s.handleAccountCodeRequestSMS)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/code", s.handleAccountCode)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/signup", s.handleAccountSignUp)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/resend", s.handleAccountResendCode)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/qr", s.handleAccountStartQR)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/password", s.handleAccountPassword)
 	mux.HandleFunc("POST /api/accounts/{id}/session/import", s.handleAccountSessionImport)
 	mux.HandleFunc("POST /api/accounts/{id}/logout", s.handleAccountLogout)
@@ -194,7 +229,12 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/auth", s.handleAuthState)
 	mux.HandleFunc("POST /api/auth/code-request", s.handleCodeRequest)
+	mux.HandleFunc("POST /api/auth/code-request/sms", s.handleCodeRequestSMS)
 	mux.HandleFunc("POST /api/auth/code", s.handleCode)
+	mux.HandleFunc("POST /api/auth/signup", s.handleSignUp)
+	mux.HandleFunc("POST /api/auth/resend", s.handleResendCode)
+	mux.HandleFunc("POST /api/auth/qr", s.handleStartQR)
+	mux.HandleFunc("GET /api/auth/qr", s.handleQRState)
 	mux.HandleFunc("POST /api/auth/password", s.handlePassword)
 	mux.HandleFunc("GET /api/session", s.handleSessionInfo)
 	mux.HandleFunc("POST /api/session/import", s.handleSessionImport)
@@ -205,14 +245,25 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/events", s.handleEventStream)
 
 	mux.HandleFunc("POST /api/shutdown", s.handleShutdown)
-	mux.HandleFunc("POST /api/restart", s.handleShutdown)
+	mux.HandleFunc("POST /api/restart", s.handleRestart)
 	mux.HandleFunc("POST /api/gc", s.handleGC)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
-	mux.Handle("/", staticHandler(s.opts.Token))
+	// Token is injected into the shell only for authenticated callers or
+	// loopback convenience. Remote unauthenticated visitors get the shell
+	// without the token so LAN exposure of host=0.0.0.0 does not leak it.
+	withToken := staticHandler(s.opts.Token)
+	withoutToken := staticHandler("")
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.authState(r) != authMissing || s.isLocalRequest(r) {
+			withToken.ServeHTTP(w, r)
+			return
+		}
+		withoutToken.ServeHTTP(w, r)
+	}))
 }
 
 func (s *Server) isAllowedHost(hostPort string) bool {
@@ -286,21 +337,24 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 					Name:     "aurora_token",
 					Value:    s.opts.Token,
 					Path:     "/",
-					HttpOnly: false,
+					HttpOnly: true,
 					SameSite: http.SameSiteLaxMode,
 					MaxAge:   31536000,
 				})
 			}
 			next.ServeHTTP(w, r)
 		default:
-			// Automatically authenticate and set cookie for local requests, root page, or static files
-			if s.isLocalRequest(r) || r.URL.Path == "/" || !strings.HasPrefix(r.URL.Path, "/api/") {
+			// Local loopback convenience only: a process on the same phone
+			// (Termux, adb, first-run wizard) gets in without a token.
+			// Everything else — including LAN peers when host=0.0.0.0 —
+			// must present a valid bearer/cookie/query token.
+			if s.isLocalRequest(r) {
 				if s.opts.Token != "" {
 					http.SetCookie(w, &http.Cookie{
 						Name:     "aurora_token",
 						Value:    s.opts.Token,
 						Path:     "/",
-						HttpOnly: false,
+						HttpOnly: true,
 						SameSite: http.SameSiteLaxMode,
 						MaxAge:   31536000,
 					})
@@ -315,7 +369,10 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				})
 				return
 			}
-			http.Redirect(w, r, "/", http.StatusFound)
+			// Static shell for remote visitors: served WITHOUT the token
+			// (see routes: token is only injected for authenticated/loopback).
+			// The SPA will show its own login prompt.
+			next.ServeHTTP(w, r)
 		}
 	})
 }
@@ -329,16 +386,12 @@ func (s *Server) isLocalRequest(r *http.Request) bool {
 	if h == "127.0.0.1" || h == "::1" || h == "localhost" {
 		return true
 	}
+	// Strictly loopback only. Private/LAN ranges (192.168.x, 10.x, …)
+	// must NOT bypass auth — otherwise host=0.0.0.0 exposes the panel
+	// with its token to the whole local network.
 	ip := net.ParseIP(h)
-	if ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-			return true
-		}
-		if ip4 := ip.To4(); ip4 != nil {
-			if ip4.IsLoopback() || ip4.IsPrivate() || ip4.IsLinkLocalUnicast() {
-				return true
-			}
-		}
+	if ip != nil && ip.IsLoopback() {
+		return true
 	}
 	return false
 }
@@ -403,8 +456,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var incoming config.Config
-	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &incoming) {
 		return
 	}
 	cur := s.opts.Backend.Config()
@@ -433,6 +485,11 @@ func redact(c *config.Config) {
 	}
 	if c.Web.Token != "" {
 		c.Web.Token = masked
+	}
+	for i := range c.Accounts {
+		if c.Accounts[i].AppHash != "" {
+			c.Accounts[i].AppHash = masked
+		}
 	}
 }
 
@@ -467,8 +524,7 @@ func (s *Server) handlePluginInstall(w http.ResponseWriter, r *http.Request) {
 		Source string `json:"source"`
 		Name   string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	msg, err := s.opts.Backend.PluginInstall(r.Context(), req.Source, req.Name)
@@ -505,8 +561,7 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 		Text string `json:"text"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
@@ -525,8 +580,7 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req proto.SendRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -547,8 +601,7 @@ func (s *Server) handleCodeRequest(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Phone string `json:"phone"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -564,11 +617,110 @@ func (s *Server) handleCode(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code string `json:"code"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.opts.Backend.SubmitCode(req.Code); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleCodeRequestSMS asks Telegram to deliver the code over SMS, which is
+// what numbers without an active app session need.
+func (s *Server) handleCodeRequestSMS(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Phone string `json:"phone"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := s.opts.Backend.RequestCodeSMS(r.Context(), req.Phone); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleAccountCodeRequestSMS is the per-account variant.
+func (s *Server) handleAccountCodeRequestSMS(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Phone string `json:"phone"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if err := s.opts.Backend.RequestCodeSMSForAccount(r.Context(), r.PathValue("id"), req.Phone); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleResendCode asks Telegram to deliver the login code again, usually
+// through the next available channel.
+func (s *Server) handleResendCode(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	if err := s.opts.Backend.ResendCode(r.Context()); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleStartQR exports a login token and waits for approval in an already
+// authorized Telegram app. The token itself is polled from GET /api/auth/qr.
+func (s *Server) handleStartQR(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	// The flow lives far longer than this request, so it must not be tied to
+	// the HTTP context: a browser or CLI closing the call cannot cancel it.
+	go s.runDetached(s.opts.Backend.StartQRLogin)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// runDetached runs a long-lived core action on its own context so the
+// originating request can be closed without tearing the action down.
+func (s *Server) runDetached(fn func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	go func() {
+		defer cancel()
+		if err := fn(ctx); err != nil {
+			s.log.Warn("background action failed", logx.F("err", err.Error()))
+		}
+	}()
+}
+
+// handleQRState reports the token waiting for approval.
+func (s *Server) handleQRState(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.opts.Backend.QRState())
+}
+
+// handleSignUp creates a Telegram account for a number that is not
+// registered yet, using the code that was already confirmed.
+func (s *Server) handleSignUp(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	var req struct {
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.FirstName) == "" {
+		writeErr(w, http.StatusBadRequest, "ім'я не може бути порожнім")
+		return
+	}
+	if err := s.opts.Backend.SignUp(req.FirstName, req.LastName); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -579,8 +731,7 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.opts.Backend.SubmitPassword(req.Password); err != nil {
@@ -598,8 +749,7 @@ func (s *Server) handleSessionImport(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Session string `json:"session"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.opts.Backend.ImportSession(req.Session); err != nil {
@@ -720,7 +870,32 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = s.opts.Backend.Restart(ctx)
+	}()
+}
+
 // ---- helpers ----
+
+const maxJSONBody = 1 << 20 // 1 MiB: enough for config/send, stops RAM exhaustion.
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return false
+	}
+	return true
+}
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -793,8 +968,7 @@ func (s *Server) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
 		AppID   int    `json:"app_id"`
 		AppHash string `json:"app_hash"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	acc, err := s.opts.Backend.AddAccount(req.Title, req.Phone, req.AppID, req.AppHash)
@@ -806,6 +980,10 @@ func (s *Server) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActivateAccount(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
 	id := r.PathValue("id")
 	if err := s.opts.Backend.SetActiveAccount(id); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -847,8 +1025,7 @@ func (s *Server) handleAccountCodeRequest(w http.ResponseWriter, r *http.Request
 	var req struct {
 		Phone string `json:"phone"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -865,11 +1042,61 @@ func (s *Server) handleAccountCode(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code string `json:"code"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.opts.Backend.SubmitCodeForAccount(id, req.Code); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleAccountStartQR starts the QR flow for one account.
+func (s *Server) handleAccountStartQR(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	id := r.PathValue("id")
+	go s.runDetached(func(ctx context.Context) error {
+		return s.opts.Backend.StartQRLoginForAccount(ctx, id)
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleAccountResendCode resends the code for one account.
+func (s *Server) handleAccountResendCode(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	if err := s.opts.Backend.ResendCodeForAccount(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleAccountSignUp registers a not-yet-known number for one account.
+func (s *Server) handleAccountSignUp(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	id := r.PathValue("id")
+	var req struct {
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.FirstName) == "" {
+		writeErr(w, http.StatusBadRequest, "ім'я не може бути порожнім")
+		return
+	}
+	if err := s.opts.Backend.SignUpForAccount(id, req.FirstName, req.LastName); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -881,8 +1108,7 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.opts.Backend.SubmitPasswordForAccount(id, req.Password); err != nil {
@@ -897,8 +1123,7 @@ func (s *Server) handleAccountSessionImport(w http.ResponseWriter, r *http.Reque
 	var req struct {
 		Session string `json:"session"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if err := s.opts.Backend.ImportSessionForAccount(id, req.Session); err != nil {

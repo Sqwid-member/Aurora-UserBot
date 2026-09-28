@@ -2,7 +2,6 @@ package web
 
 import (
 	"embed"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -15,7 +14,11 @@ import (
 //go:embed dist
 var panelFS embed.FS
 
-// staticHandler serves the embedded single-page panel with token auto-injection.
+// staticHandler serves the embedded single-page panel.
+// The token is deliberately NOT embedded into the HTML: inline scripts are
+// blocked by our own CSP (script-src 'self') and any token in the markup is
+// readable by any injected JS. Auth relies on ?token= on first visit (the SPA
+// stores it) plus the HttpOnly cookie the middleware sets.
 func staticHandler(token string) http.Handler {
 	sub, err := fs.Sub(panelFS, "dist")
 	if err != nil {
@@ -44,7 +47,8 @@ func staticHandler(token string) http.Handler {
 	})
 }
 
-// serveIndex renders the panel shell with build metadata and authentication token injected.
+// serveIndex renders the panel shell with build metadata.
+// No secret is ever written into the markup (see staticHandler).
 func serveIndex(w http.ResponseWriter, sub fs.FS, token string) {
 	body, err := fs.ReadFile(sub, "index.html")
 	if err != nil {
@@ -54,11 +58,6 @@ func serveIndex(w http.ResponseWriter, sub fs.FS, token string) {
 	out := string(body)
 	out = strings.ReplaceAll(out, "{{VERSION}}", buildinfo.Version)
 	out = strings.ReplaceAll(out, "{{BUILT}}", time.Now().UTC().Format("2006-01-02 15:04 UTC"))
-
-	if token != "" {
-		inject := fmt.Sprintf(`<script>window.__AURORA_TOKEN__=%q;try{localStorage.setItem("aurora_token",%q);document.cookie="aurora_token="+encodeURIComponent(%q)+"; path=/; max-age=31536000; SameSite=Lax";}catch(e){}</script></head>`, token, token, token)
-		out = strings.Replace(out, "</head>", inject, 1)
-	}
 
 	_, _ = w.Write([]byte(out))
 }
@@ -72,7 +71,7 @@ func serveGate(w http.ResponseWriter, r *http.Request, token string) {
 			Name:     "aurora_token",
 			Value:    token,
 			Path:     "/",
-			HttpOnly: false,
+			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   31536000,
 		})

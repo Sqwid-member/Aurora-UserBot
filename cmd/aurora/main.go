@@ -10,18 +10,18 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strings"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/app"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 )
 
@@ -39,7 +39,9 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   status              перевірити стан процесу та RAM
   logs                перегляд живого журналу логів
   setup               інтерактивне первинне налаштування (app_id, app_hash)
-  login [web]         авторизація в Telegram (у терміналі або у веб-панелі)
+  login               авторизація в Telegram (номер → код → 2FA)
+  login qr            вхід тапом по посиланню на цьому ж телефоні (без номера/SMS)
+  login web           авторизація у веб-панелі (QR / код / імпорт сесії)
   update              автоматично оновити юзербота до найновішої версії з GitHub
   panel               надрукувати адресу панелі та токен
   send <peer> <текст>  надіслати повідомлення
@@ -175,25 +177,9 @@ func mustApp(layout paths.Layout, scope string) (*app.App, error) {
 // ---- run ----
 
 func cmdRun(layout paths.Layout) error {
-	store, err := config.Open(layout.ConfigFile(), nil)
-	if err == nil {
-		if errVal := store.Get().Validate(); errVal != nil {
-			if isCharDevice(os.Stdin) {
-				fmt.Fprintln(os.Stderr, "⚠ Конфігурація не заповнена:", errVal)
-				fmt.Fprint(os.Stderr, "  Запустити інтерактивне налаштування зараз? [Y/n]: ")
-				reader := bufio.NewReader(os.Stdin)
-				line, _ := reader.ReadString('\n')
-				ans := strings.TrimSpace(strings.ToLower(line))
-				if ans == "" || ans == "y" || ans == "yes" || ans == "т" || ans == "так" {
-					if err := cmdSetup(layout); err != nil {
-						return err
-					}
-				} else {
-					return errVal
-				}
-			}
-		}
-	}
+	// Note: defaults (Web API keys) are functional, so Validate() always
+	// passes after normalize. The real onboarding gate is sessionExists()
+	// below, not the API keys.
 	a, err := mustApp(layout, "core")
 	if err != nil {
 		return err
@@ -275,6 +261,12 @@ func promptForLogin(ctx context.Context, a *app.App) {
 // ---- login ----
 
 func cmdLogin(layout paths.Layout, args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "qr", "--qr", "-w":
+			return cmdQRLogin(layout)
+		}
+	}
 	if len(args) > 0 && (args[0] == "--web" || args[0] == "web" || args[0] == "-w") {
 		return cmdLoginWeb(layout)
 	}
@@ -585,7 +577,7 @@ func cmdDoctor(layout paths.Layout) error {
 				if c.UsingCustomAPIKeys() {
 					return fmt.Sprintf("власні (%d / %s)", c.Telegram.AppID, maskSecret(c.Telegram.AppHash))
 				}
-				return "стандартні (Telegram Desktop 2040)"
+				return "стандартні (Telegram Web K)"
 			}()},
 			check{"сесія", tgc.InspectSession(layout.SessionFile()).Exists, layout.SessionFile()},
 		)
@@ -697,7 +689,7 @@ func cmdSetup(layout paths.Layout) error {
 	if c.UsingCustomAPIKeys() {
 		fmt.Printf("   Зараз активні: ВЛАСНІ ключі (App ID: %d, App Hash: %s)\n", c.Telegram.AppID, maskSecret(c.Telegram.AppHash))
 	} else {
-		fmt.Println("   Зараз активні: СТАНДАРТНІ публічні ключі Telegram (Desktop 2040)")
+		fmt.Println("   Зараз активні: СТАНДАРТНІ публічні ключі Telegram (Web K)")
 	}
 	fmt.Println("   (За замовчуванням активні стандартні ключі: вхід лише за номером, кодом і паролем)")
 	fmt.Println("   Якщо у вас виникають блокування або помилки, ви можете вказати власні ключі з my.telegram.org")
@@ -779,8 +771,6 @@ func cmdStart(layout paths.Layout) error {
 		return err
 	}
 
-
-
 	// Ensure binary path has leading slash to avoid any LookPath
 	bin, err := os.Executable()
 	if err != nil || !strings.Contains(bin, "/") {
@@ -849,8 +839,6 @@ func cmdStop(layout paths.Layout) error {
 		_ = proc.Kill()
 	}
 	_ = os.Remove(layout.PidFile())
-
-
 
 	fmt.Printf("✓ Aurora (PID %d) зупинена\n", pid)
 	return nil

@@ -55,12 +55,12 @@ info "3. Тестування моделі конфігурації та мул�
 python3 -c "
 with open('internal/config/config.go') as f:
     code = f.read()
-assert 'DefaultAppID = 2040' in code, 'Missing DefaultAppID'
+assert 'DefaultAppID = 611335' in code, 'Missing DefaultAppID'
 assert 'DefaultAppHash =' in code, 'Missing DefaultAppHash'
 assert 'type AccountConfig struct' in code, 'Missing AccountConfig'
 assert 'func (c *Config) ToggleAccountPlugin' in code, 'Missing ToggleAccountPlugin'
 assert 'func (a AccountConfig) IsPluginEnabled' in code, 'Missing IsPluginEnabled'
-" && pass "internal/config/config.go (дефолтні ключі 2040, AccountConfig): OK"
+" && pass "internal/config/config.go (дефолтні ключі 611335, AccountConfig): OK"
 
 python3 -c "
 with open('internal/proto/proto.go') as f:

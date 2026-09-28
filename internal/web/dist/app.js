@@ -610,7 +610,7 @@
       const tg = c.telegram || {};
       const customKeys = tg.app_id > 0 && tg.app_hash && tg.app_hash !== '••••••';
       if ($('#setting-tg-badge')) {
-        $('#setting-tg-badge').textContent = customKeys ? 'Власні ключі' : 'Стандартні (2040)';
+        $('#setting-tg-badge').textContent = customKeys ? 'Власні ключі' : 'Стандартні (Web K)';
       }
       if ($('#setting-tg-appid')) $('#setting-tg-appid').value = tg.app_id > 0 ? tg.app_id : '';
       if ($('#setting-tg-apphash')) $('#setting-tg-apphash').value = tg.app_hash && tg.app_hash !== '••••••' ? tg.app_hash : '';
@@ -898,43 +898,91 @@
     });
   });
 
-  // ---------- Auth Login Modal ----------
+  // ---------- Auth Login Modal v2 (QR на цьому телефоні / код / сесія) ----------
   function normalizePhone(val) {
-    let p = val.replace(/[^\d+]/g, "");
-    if (p.startsWith("0") && p.length === 10) p = "+38" + p;
-    else if (p.startsWith("380")) p = "+" + p;
-    else if (p.startsWith("48") && p.length === 11) p = "+" + p;
-    else if (!p.startsWith("+") && p.length > 0) p = "+" + p;
+    let p = (val || '').replace(/[^\d+]/g, '');
+    if (!p) return '';
+    if (p.startsWith('00')) p = '+' + p.slice(2);
+    else if (p.startsWith('0') && p.length >= 10 && !p.startsWith('+')) p = '+38' + p;
+    else if (!p.startsWith('+')) p = '+' + p;
     return p;
   }
 
-  $('#form-auth-phone')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('#form-auth-phone button[type="submit"]');
+  function authTab(name) {
+    $$('#auth-tabs [data-auth-tab]').forEach((b) => b.classList.toggle('active', b.dataset.authTab === name));
+    ['qr', 'code', 'session'].forEach((t) => {
+      const el = $('#auth-tab-' + t);
+      if (el) el.hidden = t !== name;
+    });
+  }
+  $$('#auth-tabs [data-auth-tab]').forEach((b) => {
+    b.onclick = () => authTab(b.dataset.authTab);
+  });
+
+  function authNote(msg, isErr) {
+    const el = $('#auth-status');
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    el.textContent = msg;
+    el.classList.toggle('err', !!isErr);
+  }
+
+  function showCodeStep(which) {
+    const map = { phone: '#auth-step-phone', code: '#auth-step-code', signup: '#auth-step-signup', pwd: '#auth-step-pwd' };
+    Object.entries(map).forEach(([k, sel]) => {
+      const el = $(sel);
+      if (el) el.style.display = k === which ? 'block' : 'none';
+    });
+    authTab('code');
+  }
+
+  async function requestCode(viaSMS) {
     const input = $('#auth-phone-input');
-    const phone = normalizePhone(input.value.trim());
+    const phone = normalizePhone((input.value || '').trim());
     if (!phone) {
       toast('Помилка', 'Введіть номер телефону', 'error');
       return;
     }
     input.value = phone;
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Надсилаємо код...';
-    }
+    const path = viaSMS ? '/api/auth/code-request/sms' : '/api/auth/code-request';
     try {
-      await api('/api/auth/code-request', { method: 'POST', body: JSON.stringify({ phone }) });
-      toast('Вхід', 'Код підтвердження успішно надіслано в Telegram!', 'ok');
-      $('#auth-step-phone').style.display = 'none';
-      $('#auth-step-code').style.display = 'block';
+      authNote(viaSMS ? 'Надсилаємо код по SMS…' : 'Надсилаємо код…', false);
+      await api(path, { method: 'POST', body: JSON.stringify({ phone }) });
+      toast('Вхід', viaSMS ? 'Код надіслано по SMS!' : 'Код підтвердження надіслано!', 'ok');
+      showCodeStep('code');
+      authNote('', false);
       setTimeout(() => $('#auth-code-input')?.focus(), 100);
     } catch (err) {
+      authNote(err.message || 'Не вдалося надіслати код', true);
       toast('Помилка', err.message || 'Не вдалося надіслати код', 'error');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Отримати код';
-      }
+    }
+  }
+
+  $('#form-auth-phone')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#form-auth-phone button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Надсилаємо код...'; }
+    try { await requestCode(false); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Отримати код'; } }
+  });
+
+  $('#btn-auth-sms')?.addEventListener('click', async () => {
+    const btn = $('#btn-auth-sms');
+    if (btn) { btn.disabled = true; }
+    try { await requestCode(true); }
+    finally { if (btn) { btn.disabled = false; } }
+  });
+
+  $('#btn-auth-resend')?.addEventListener('click', async () => {
+    try {
+      authNote('Надсилаємо код ще раз (зазвичай SMS/дзвінок)…', false);
+      await api('/api/auth/resend', { method: 'POST' });
+      authNote('', false);
+      toast('Вхід', 'Код надіслано повторно', 'ok');
+    } catch (err) {
+      authNote(err.message || 'Не вдалося надіслати повторно', true);
+      toast('Помилка', err.message || 'Не вдалося надіслати повторно', 'error');
     }
   });
 
@@ -945,16 +993,38 @@
     try {
       await api('/api/auth/code', { method: 'POST', body: JSON.stringify({ code }) });
       toast('Вхід', 'Авторизовано!', 'ok');
+      authNote('', false);
       closeModal('#modal-auth');
       refreshStatus();
     } catch (err) {
       const msg = err.message || '';
-      if (msg.includes('password') || msg.includes('2FA') || msg.includes('SESSION_PASSWORD_NEEDED')) {
-        $('#auth-step-code').style.display = 'none';
-        $('#auth-step-pwd').style.display = 'block';
+      const up = msg.toUpperCase();
+      if (up.includes('SESSION_PASSWORD_NEEDED') || up.includes('PASSWORD_AUTH_NEEDED') || msg.includes('2FA')) {
+        showCodeStep('pwd');
+        authNote('Потрібен хмарний пароль 2FA.', false);
+      } else if (msg.includes('не зареєстровано') || up.includes('SIGN-UP') || up.includes('SIGNUP') || up.includes('NOT REGISTERED') || up.includes('UNOCCUPLICATED')) {
+        showCodeStep('signup');
+        authNote(msg, false);
       } else {
+        authNote(msg, true);
         toast('Помилка коду', msg, 'error');
       }
+    }
+  });
+
+  $('#form-auth-signup')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const first = ($('#auth-signup-first').value || '').trim();
+    const last = ($('#auth-signup-last').value || '').trim();
+    if (!first) { toast('Помилка', "Введіть ім'я", 'error'); return; }
+    try {
+      await api('/api/auth/signup', { method: 'POST', body: JSON.stringify({ first_name: first, last_name: last }) });
+      toast('Вхід', 'Акаунт створено!', 'ok');
+      closeModal('#modal-auth');
+      refreshStatus();
+    } catch (err) {
+      authNote(err.message, true);
+      toast('Помилка реєстрації', err.message, 'error');
     }
   });
 
@@ -967,6 +1037,7 @@
       closeModal('#modal-auth');
       refreshStatus();
     } catch (err) {
+      authNote(err.message, true);
       toast('Помилка 2FA', err.message, 'error');
     }
   });
@@ -974,14 +1045,103 @@
   $('#form-import-session')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const session = $('#auth-session-input').value.trim();
-    if (!session) return;
+    if (!session) { toast('Помилка', 'Вставте рядок сесії', 'error'); return; }
+    if (session.length < 32) { toast('Помилка', 'Рядок сесії закороткий — перевірте копію', 'error'); return; }
     try {
       await api('/api/session/import', { method: 'POST', body: JSON.stringify({ session }) });
       toast('Сесія', 'Сесію імпортовано. Перезапустіть ядро.', 'ok');
       closeModal('#modal-auth');
+      refreshStatus();
     } catch (err) {
       toast('Помилка імпорту', err.message, 'error');
     }
+  });
+
+  // ----- QR на цьому ж телефоні: старт + опитування токена -----
+  let qrTimer = null;
+  function qrStopPoll() {
+    if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
+  }
+  function qrSetLink(url, expires) {
+    const link = $('#qr-link'), exp = $('#qr-expires'), open = $('#btn-qr-open');
+    if (!link || !open) return;
+    if (!url) {
+      link.hidden = true; link.textContent = '';
+      if (exp) { exp.hidden = true; exp.textContent = ''; }
+      open.style.opacity = '.5'; open.style.pointerEvents = 'none'; open.removeAttribute('href');
+      return;
+    }
+    link.hidden = false; link.textContent = url;
+    if (exp && expires) {
+      exp.hidden = false;
+      try { exp.textContent = 'Діє до ' + new Date(expires).toLocaleTimeString(); }
+      catch { exp.textContent = ''; }
+    }
+    open.style.opacity = '1'; open.style.pointerEvents = 'auto';
+    open.setAttribute('href', url);
+  }
+  async function qrPollOnce() {
+    try {
+      const st = await api('/api/auth/qr');
+      const status = $('#qr-status');
+      if (st && st.url) {
+        qrSetLink(st.url, st.expires);
+        if (status) status.textContent = st.running ? 'Чекаю підтвердження в Telegram — відкрийте посилання нижче…' : 'Посилання готове.';
+      } else if (status) {
+        status.textContent = st && st.running ? 'Telegram готує посилання…' : 'Посилання ще не готове — оновіть статус.';
+      }
+      try {
+        const auth = await api('/api/auth');
+        if (auth && auth.signed_in) {
+          if (status) status.textContent = 'Підтверджено! Сесію збережено.';
+          qrStopPoll();
+          toast('Вхід', 'Авторизовано по QR!', 'ok');
+          closeModal('#modal-auth');
+          refreshStatus();
+        }
+      } catch {}
+    } catch (err) {
+      const status = $('#qr-status');
+      if (status) status.textContent = 'Помилка статусу: ' + (err.message || err);
+    }
+  }
+  function qrStartPoll() {
+    qrStopPoll();
+    qrTimer = setInterval(qrPollOnce, 2000);
+  }
+  $('#btn-qr-start')?.addEventListener('click', async () => {
+    const btn = $('#btn-qr-start'), status = $('#qr-status');
+    if (btn) { btn.disabled = true; btn.textContent = 'Запитуємо…'; }
+    try {
+      await api('/api/auth/qr', { method: 'POST' });
+      if (status) status.textContent = 'Запит надіслано, чекаю токен від Telegram…';
+      qrSetLink('', '');
+      await qrPollOnce();
+      qrStartPoll();
+    } catch (err) {
+      if (status) status.textContent = 'Помилка: ' + (err.message || err);
+      toast('QR-вхід', err.message || 'Не вдалося', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Отримати посилання для входу'; }
+    }
+  });
+  $('#btn-qr-refresh')?.addEventListener('click', () => qrPollOnce());
+  $('#btn-qr-copy')?.addEventListener('click', async () => {
+    const url = ($('#qr-link')?.textContent || '').trim();
+    if (!url) { toast('QR', 'Посилання ще немає', 'error'); return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('QR', 'Посилання скопійовано', 'ok');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast('QR', 'Посилання скопійовано', 'ok'); }
+      catch { toast('QR', 'Не вдалося скопіювати', 'error'); }
+      ta.remove();
+    }
+  });
+  $('#modal-auth')?.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'modal-auth') qrStopPoll();
   });
 
   // ---------- Streams & Events ----------

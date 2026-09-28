@@ -226,6 +226,7 @@ const (
 	AuthNone     AuthStep = "none"
 	AuthPhone    AuthStep = "phone"
 	AuthCode     AuthStep = "code"
+	AuthSignup   AuthStep = "signup"
 	AuthPassword AuthStep = "password"
 	AuthSignedIn AuthStep = "signed_in"
 )

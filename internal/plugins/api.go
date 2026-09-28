@@ -246,14 +246,8 @@ func (h *Host) bindAPI(p *Instance) {
 		if err := decode(raw, &req); err != nil {
 			return nil, err
 		}
-		for _, n := range req.Names {
-			if n == "*" {
-				m.Events = append(m.Events, "*")
-				break
-			}
-			m.Events = append(m.Events, n)
-		}
-		return map[string]any{"ok": true, "events": m.Events}, nil
+		events := m.SubscribeEvents(req.Names)
+		return map[string]any{"ok": true, "events": events}, nil
 	})
 	c.Handle("core.info", func(_ context.Context, _ json.RawMessage) (any, *ipc.Error) {
 		return map[string]any{
@@ -301,13 +295,27 @@ func isBlockedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
 	}
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	// Private/LAN ranges must not be reachable from plugins: router admin,
+	// NAS, cameras, Termux itself. Covers IPv4 + IPv6 ULA + CGNAT.
+	if ip.IsPrivate() {
 		return true
 	}
 	if ip4 := ip.To4(); ip4 != nil {
 		if ip4[0] == 127 || ip4[0] == 0 || (ip4[0] == 169 && ip4[1] == 254) {
 			return true
 		}
+		// 100.64.0.0/10 CGNAT (not covered by IsPrivate on older Go).
+		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return true
+		}
+		return false
+	}
+	// IPv6 extras: fe80::/10 link-local, fc00::/7 ULA, ::ffff:0:0/96 mapped.
+	if strings.HasPrefix(strings.ToLower(ip.String()), "fe80:") {
+		return true
 	}
 	return false
 }
@@ -319,7 +327,10 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 	}
 
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		// Direct connection on purpose: ProxyFromEnvironment would send the
+		// request to the proxy IP, while our DialContext SSRF check would
+		// only see the proxy — the real target would go unchecked.
+		Proxy: nil,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {

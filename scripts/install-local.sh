@@ -54,23 +54,25 @@ else
     cp "$PREBUILT" "$BIN_DIR/aurora"
     chmod 755 "$BIN_DIR/aurora"
     say "Бінарник успішно встановлено в $BIN_DIR/aurora"
-  elif ! command -v go >/dev/null 2>&1; then
-    if [ "$IS_TERMUX" = "1" ]; then
-      say "Встановлюю Go компілятор у Termux..."
-      pkg install -y golang
-    else
-      die "Для збирання потрібен Go: встановіть Go або скористайтесь готовим бінарником"
+  else
+    if ! command -v go >/dev/null 2>&1; then
+      if [ "$IS_TERMUX" = "1" ]; then
+        say "Встановлюю Go компілятор у Termux..."
+        pkg install -y golang
+      else
+        die "Для збирання потрібен Go: встановіть Go або скористайтесь готовим бінарником"
+      fi
     fi
+
+    say "Компіляція статичного бінарника (CGO=0)..."
+    VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "v0.2.0-termux")"
+    COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "local")"
+    LDFLAGS="-s -w -X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Version=${VERSION} -X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Commit=${COMMIT}"
+
+    CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "$BIN_DIR/aurora" ./cmd/aurora
+    chmod 755 "$BIN_DIR/aurora"
+    say "Бінарник успішно зібрано: $BIN_DIR/aurora"
   fi
-
-  say "Компіляція статичного бінарника (CGO=0)..."
-  VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "v0.2.0-termux")"
-  COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "local")"
-  LDFLAGS="-s -w -X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Version=${VERSION} -X github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo.Commit=${COMMIT}"
-
-  CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "$BIN_DIR/aurora" ./cmd/aurora
-  chmod 755 "$BIN_DIR/aurora"
-  say "Бінарник успішно зібрано: $BIN_DIR/aurora"
 fi
 
 # 2. Копіювання прикладів плагінів

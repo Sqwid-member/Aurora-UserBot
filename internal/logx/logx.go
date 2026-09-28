@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -113,6 +112,11 @@ type shared struct {
 	count   int
 	dropped uint64
 
+	// sinkMu serialises renders into the shared sink. Without it two
+	// goroutines can interleave halfway through a line and produce a
+	// half-record in the log file.
+	sinkMu sync.Mutex
+
 	subs   map[uint64]chan Record
 	nextID uint64
 }
@@ -199,28 +203,29 @@ func (l *Logger) log(lv Level, msg string, fields ...Field) {
 	l.write(rec)
 }
 
+// store writes the record into the ring and fans it out to subscribers.
+//
+// The fan-out happens while the lock is still held. Every send is
+// non-blocking, so holding the lock cannot stall the caller, and it is what
+// makes closing a subscriber channel in cancel() safe: the channel can only
+// be closed by a goroutine that already holds the same lock, so a producer can
+// never be mid-send on a channel that is about to be closed.
 func (l *Logger) store(rec Record) {
 	st := l.st
 
 	st.mu.Lock()
+	defer st.mu.Unlock()
+
 	st.ring[st.head] = rec
 	st.head = (st.head + 1) % len(st.ring)
 	if st.count < len(st.ring) {
 		st.count++
 	}
-	subs := make([]chan Record, 0, len(st.subs))
 	for _, c := range st.subs {
-		subs = append(subs, c)
-	}
-	st.mu.Unlock()
-
-	for _, c := range subs {
 		select {
 		case c <- rec:
 		default: // slow consumer: never block the producer
-			st.mu.Lock()
 			st.dropped++
-			st.mu.Unlock()
 		}
 	}
 }
@@ -229,6 +234,8 @@ func (l *Logger) write(rec Record) {
 	if l.sink == nil {
 		return
 	}
+	l.st.sinkMu.Lock()
+	defer l.st.sinkMu.Unlock()
 	var b strings.Builder
 	b.Grow(len(rec.Msg) + 48)
 	b.WriteString(rec.Time.Format("15:04:05.000"))
@@ -353,14 +360,4 @@ func (r Record) JSON() []byte {
 		return []byte(`{"level":"ERROR","msg":"log marshal failed"}`)
 	}
 	return b
-}
-
-// SortedKeys returns sorted field keys; used by deterministic tests.
-func SortedKeys(fields []Field) []string {
-	keys := make([]string, 0, len(fields))
-	for _, f := range fields {
-		keys = append(keys, f.Key)
-	}
-	sort.Strings(keys)
-	return keys
 }
