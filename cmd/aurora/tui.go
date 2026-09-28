@@ -73,6 +73,7 @@ func cmdTUI(layout paths.Layout) error {
 		fmt.Println("  \033[1;36m[7]\033[0m 🧩 \033[1mКерування плагінами\033[0m (список та перемикання)")
 		fmt.Println("  \033[1;32m[8]\033[0m 🧹 \033[1mОчищення пам'яті (RAM GC)\033[0m")
 		fmt.Println("  \033[1;33m[9]\033[0m ⚙️  \033[1mНалаштувати власні API ключі\033[0m (my.telegram.org)")
+		fmt.Println("  \033[1;36m[u]\033[0m 🚀 \033[1mОновити юзербота\033[0m (aurora update)")
 		fmt.Println("  \033[1;31m[0]\033[0m 🚪 \033[1mВийти з Telegram акаунта\033[0m (Logout)")
 		fmt.Println("  \033[2m[q]  Вийти з меню\033[0m")
 		fmt.Println("\033[2m────────────────────────────────────────────────────────────────────\033[0m")
@@ -129,6 +130,9 @@ func cmdTUI(layout paths.Layout) error {
 			pressEnterToContinue(reader)
 		case "9":
 			_ = cmdSetup(layout)
+			pressEnterToContinue(reader)
+		case "u", "update":
+			_ = cmdUpdate(layout)
 			pressEnterToContinue(reader)
 		case "0":
 			fmt.Print("Ви дійсно бажаєте вийти з акаунта Telegram? [y/N]: ")

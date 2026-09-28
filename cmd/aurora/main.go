@@ -40,6 +40,7 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   logs                перегляд живого журналу логів
   setup               інтерактивне первинне налаштування (app_id, app_hash)
   login [web]         авторизація в Telegram (у терміналі або у веб-панелі)
+  update              автоматично оновити юзербота до найновішої версії з GitHub
   panel               надрукувати адресу панелі та токен
   send <peer> <текст>  надіслати повідомлення
   plugins             список плагінів
@@ -131,6 +132,8 @@ func run(args []string) error {
 		return cmdConfig(layout)
 	case "doctor":
 		return cmdDoctor(layout)
+	case "update", "upgrade":
+		return cmdUpdate(layout)
 	case "version":
 		fmt.Println("aurora " + buildinfo.String())
 		return nil
