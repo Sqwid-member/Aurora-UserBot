@@ -31,7 +31,8 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   aurora [команда] [аргументи]
 
 Команди:
-  run                 запустити ядро (Telegram + плагіни + панель) — за замовчуванням
+  menu                інтерактивний центр керування в терміналі (за замовчуванням)
+  run                 запустити ядро (Telegram + плагіни + панель) у відкритій консолі
   start               запустити у фоновому режимі (демон для Termux/Linux)
   stop                зупинити фоновий процес
   restart             перезапустити фоновий процес
@@ -73,7 +74,7 @@ func main() {
 }
 
 func run(args []string) error {
-	cmd := "run"
+	cmd := ""
 	if len(args) > 0 {
 		if args[0] == "-h" || args[0] == "--help" {
 			cmd = "help"
@@ -84,6 +85,10 @@ func run(args []string) error {
 		} else if !strings.HasPrefix(args[0], "-") {
 			cmd, args = args[0], args[1:]
 		}
+	} else if isCharDevice(os.Stdin) {
+		cmd = "menu"
+	} else {
+		cmd = "run"
 	}
 
 	layout, err := paths.Resolve(paths.OSEnv)
@@ -92,6 +97,8 @@ func run(args []string) error {
 	}
 
 	switch cmd {
+	case "menu", "tui", "dashboard":
+		return cmdTUI(layout)
 	case "run":
 		return cmdRun(layout)
 	case "start":
@@ -265,60 +272,10 @@ func promptForLogin(ctx context.Context, a *app.App) {
 // ---- login ----
 
 func cmdLogin(layout paths.Layout, args []string) error {
-	if sessionExists(layout) {
-		fmt.Println("✓ сесія вже існує:", layout.SessionFile())
-		fmt.Println("  Щоб увійти заново: aurora logout && rm", layout.SessionFile())
-		return nil
-	}
-
-	mode := "terminal"
 	if len(args) > 0 && (args[0] == "--web" || args[0] == "web" || args[0] == "-w") {
-		mode = "web"
-	} else if isCharDevice(os.Stdin) && len(args) == 0 {
-		fmt.Println("🌌 Оберіть спосіб входу в Telegram:")
-		fmt.Println("   1) У терміналі прямо зараз (номер -> код -> пароль)")
-		fmt.Println("   2) У веб-панелі через браузер (відкриється посилання)")
-		fmt.Print("Ваш вибір [1/2, за замовчуванням 1]: ")
-		reader := bufio.NewReader(os.Stdin)
-		line, _ := reader.ReadString('\n')
-		ans := strings.TrimSpace(line)
-		if ans == "2" || strings.ToLower(ans) == "web" {
-			mode = "web"
-		}
-	}
-
-	if mode == "web" {
 		return cmdLoginWeb(layout)
 	}
-
-	a, err := mustApp(layout, "core")
-	if err != nil {
-		return err
-	}
-	if err := a.Cfg.Get().Validate(); err != nil {
-		return err
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	go promptForLogin(ctx, a)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-time.After(3 * time.Minute):
-			fmt.Fprintln(os.Stderr, "⏱  час вичерпано")
-			stop()
-		}
-	}()
-
-	runCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
-	defer cancel()
-	if err := a.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
-		return err
-	}
-	fmt.Println("✓ готово")
-	return nil
+	return cmdTerminalLogin(layout)
 }
 
 func cmdLoginWeb(layout paths.Layout) error {
