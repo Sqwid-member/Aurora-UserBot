@@ -516,7 +516,9 @@ func (s *Server) handleCodeRequest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.opts.Backend.RequestCode(r.Context(), req.Phone); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := s.opts.Backend.RequestCode(ctx, req.Phone); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -802,7 +804,9 @@ func (s *Server) handleAccountCodeRequest(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.opts.Backend.RequestCodeForAccount(r.Context(), id, req.Phone); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := s.opts.Backend.RequestCodeForAccount(ctx, id, req.Phone); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
