@@ -796,16 +796,16 @@ func cmdStart(layout paths.Layout) error {
 		return err
 	}
 
-	// У Termux запобігаємо засинанню процесора при вимкненому екрані
-	if paths.IsTermux() {
-		if wl, err := sysx.LookPath("termux-wake-lock"); err == nil {
-			_ = sysx.Command(wl).Run()
-		}
-	}
 
+
+	// Ensure binary path has leading slash to avoid any LookPath
 	bin, err := os.Executable()
-	if err != nil {
-		bin = "aurora"
+	if err != nil || !strings.Contains(bin, "/") {
+		if lp, err := sysx.LookPath("aurora"); err == nil {
+			bin = lp
+		} else {
+			bin = "/data/data/com.termux/files/usr/bin/aurora"
+		}
 	}
 
 	logFile, err := os.OpenFile(layout.LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -863,11 +863,7 @@ func cmdStop(layout paths.Layout) error {
 	}
 	_ = os.Remove(layout.PidFile())
 
-	if paths.IsTermux() {
-		if wu, err := sysx.LookPath("termux-wake-unlock"); err == nil {
-			_ = sysx.Command(wu).Run()
-		}
-	}
+
 
 	fmt.Printf("✓ Aurora (PID %d) зупинена\n", pid)
 	return nil
