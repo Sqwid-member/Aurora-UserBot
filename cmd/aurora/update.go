@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -81,12 +83,21 @@ func cmdUpdate(layout paths.Layout) error {
 		return fmt.Errorf("розбір відповіді GitHub API: %w", err)
 	}
 
-	// Find asset for our platform
+	// Find asset for our platform. Two passes: an exact raw binary first
+	// (a .sha256 checksum file must never win the match), then a tarball.
 	var asset *releaseAsset
 	for i := range rel.Assets {
-		if rel.Assets[i].Name == binName || rel.Assets[i].Name == binName+".tar.gz" || rel.Assets[i].Name == binName+".sha256" {
+		if rel.Assets[i].Name == binName {
 			asset = &rel.Assets[i]
 			break
+		}
+	}
+	if asset == nil {
+		for i := range rel.Assets {
+			if rel.Assets[i].Name == binName+".tar.gz" {
+				asset = &rel.Assets[i]
+				break
+			}
 		}
 	}
 	if asset == nil {
@@ -105,7 +116,8 @@ func cmdUpdate(layout paths.Layout) error {
 		return fmt.Errorf("GitHub повернув HTTP %d при завантаженні бінарника", resp.StatusCode)
 	}
 
-	// Download to temp file with size limit
+	// Download to temp file with size limit. A tarball asset carries the
+	// binary inside, so extract its first regular file instead.
 	tmpFile := targetPath + ".new"
 	out, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
@@ -115,7 +127,12 @@ func cmdUpdate(layout paths.Layout) error {
 	// Compute SHA256 while downloading
 	hasher := sha256.New()
 	mw := io.MultiWriter(out, hasher)
-	n, err := io.Copy(mw, io.LimitReader(resp.Body, maxUpdateBytes+1))
+	var n int64
+	if strings.HasSuffix(asset.Name, ".tar.gz") {
+		n, err = extractTarGz(mw, resp.Body)
+	} else {
+		n, err = io.Copy(mw, io.LimitReader(resp.Body, maxUpdateBytes+1))
+	}
 	_ = out.Close()
 	if err != nil {
 		_ = os.Remove(tmpFile)
@@ -208,6 +225,36 @@ func cmdUpdate(layout paths.Layout) error {
 
 	fmt.Println("\n\033[1;32m🎉 ОНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО!\033[0m")
 	return nil
+}
+
+// extractTarGz streams the first regular file out of a .tar.gz archive,
+// capped at maxUpdateBytes+1. It rejects absolute paths and ".." escapes so
+// a crafted asset cannot write outside the temp file (we only stream bytes,
+// but staying strict costs nothing).
+func extractTarGz(dst io.Writer, src io.Reader) (int64, error) {
+	gz, err := gzip.NewReader(io.LimitReader(src, maxUpdateBytes+1))
+	if err != nil {
+		return 0, fmt.Errorf("розпакування tar.gz: %w", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return 0, fmt.Errorf("tar.gz не містить файлів")
+		}
+		if err != nil {
+			return 0, fmt.Errorf("читання tar.gz: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+			continue
+		}
+		name := strings.TrimSpace(hdr.Name)
+		if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "..") {
+			continue
+		}
+		return io.Copy(dst, io.LimitReader(tr, maxUpdateBytes+1))
+	}
 }
 
 func restoreBackup(target, backup string) {
