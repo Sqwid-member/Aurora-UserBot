@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -24,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/kv"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
@@ -520,7 +520,7 @@ func validatePluginSource(source string) error {
 // PluginInstall implements web.Backend. It clones a git repository into the
 // plugin directory and starts it if a valid manifest is present.
 func (a *App) PluginInstall(ctx context.Context, source, name string) (string, error) {
-	if _, err := exec.LookPath("git"); err != nil {
+	if _, err := sysx.LookPath("git"); err != nil {
 		return "", errors.New("git не встановлено: pkg install git")
 	}
 	if err := validatePluginSource(source); err != nil {
@@ -549,7 +549,7 @@ func (a *App) PluginInstall(ctx context.Context, source, name string) (string, e
 	a.Log.Info("installing plugin", logx.F("name", name), logx.F("source", source))
 	gctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	git := exec.CommandContext(gctx, "git", "clone", "--depth", "1", "--", source, dst)
+	git := sysx.CommandContext(gctx, "git", "clone", "--depth", "1", "--", source, dst)
 	if out, err := git.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(dst)
 		return "", fmt.Errorf("git clone: %v: %s", err, strings.TrimSpace(string(out)))

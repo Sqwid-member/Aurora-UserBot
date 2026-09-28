@@ -13,9 +13,9 @@ import (
 	"strings"
 	"strconv"
 	"syscall"
-	"os/exec"
 	"time"
 
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/app"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
@@ -359,8 +359,8 @@ func openBrowserCLI(url string) {
 		[]string{"open", url},
 	)
 	for _, c := range candidates {
-		if path, err := exec.LookPath(c[0]); err == nil {
-			_ = exec.Command(path, c[1:]...).Start()
+		if path, err := sysx.LookPath(c[0]); err == nil {
+			_ = sysx.Command(path, c[1:]...).Start()
 			return
 		}
 	}
@@ -798,8 +798,8 @@ func cmdStart(layout paths.Layout) error {
 
 	// У Termux запобігаємо засинанню процесора при вимкненому екрані
 	if paths.IsTermux() {
-		if wl, err := exec.LookPath("termux-wake-lock"); err == nil {
-			_ = exec.Command(wl).Run()
+		if wl, err := sysx.LookPath("termux-wake-lock"); err == nil {
+			_ = sysx.Command(wl).Run()
 		}
 	}
 
@@ -814,7 +814,7 @@ func cmdStart(layout paths.Layout) error {
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(bin, "run")
+	cmd := sysx.Command(bin, "run")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = sysProcAttrDaemon()
@@ -864,8 +864,8 @@ func cmdStop(layout paths.Layout) error {
 	_ = os.Remove(layout.PidFile())
 
 	if paths.IsTermux() {
-		if wu, err := exec.LookPath("termux-wake-unlock"); err == nil {
-			_ = exec.Command(wu).Run()
+		if wu, err := sysx.LookPath("termux-wake-unlock"); err == nil {
+			_ = sysx.Command(wu).Run()
 		}
 	}
 
@@ -915,8 +915,8 @@ func cmdLogs(layout paths.Layout) error {
 		return nil
 	}
 
-	if tail, err := exec.LookPath("tail"); err == nil {
-		cmd := exec.Command(tail, "-n", "50", "-f", logPath)
+	if tail, err := sysx.LookPath("tail"); err == nil {
+		cmd := sysx.Command(tail, "-n", "50", "-f", logPath)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin

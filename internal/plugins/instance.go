@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/ipc"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 )
 
@@ -156,7 +157,7 @@ func (p *Instance) Start(ctx context.Context) error {
 
 	// Cancel and WaitDelay may only be set on a Command created with
 	// CommandContext — exec enforces that, and rightly so.
-	cmd := exec.CommandContext(p.ctx, bin, args...)
+	cmd := sysx.CommandContext(p.ctx, bin, args...)
 	cmd.Dir = p.Dir
 	cmd.Env = p.buildEnv()
 	cmd.SysProcAttr = procAttr()
@@ -552,7 +553,7 @@ func (p *Instance) resolveCommand() (string, []string, error) {
 			// to the plugin dir, so `proot -r / ./run.sh` just works.
 			bin = lookup
 		} else {
-			found, err := exec.LookPath(raw)
+			found, err := sysx.LookPath(raw)
 			if err != nil {
 				return "", nil, fmt.Errorf("plugins: %s: %w", raw, err)
 			}

@@ -3,13 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"runtime"
 	"strings"
 	"syscall"
 )
 
-func lookPath(bin string) (string, error) { return exec.LookPath(bin) }
+func lookPath(bin string) (string, error) { return sysx.LookPath(bin) }
 
 func runtimeMem() string {
 	if s := readStatusKB(); s != "" {

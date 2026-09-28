@@ -12,12 +12,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os/exec"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
@@ -717,15 +717,15 @@ func openBrowser(url string) {
 		[]string{"open", url},
 	)
 	for _, c := range candidates {
-		if path, err := exec.LookPath(c[0]); err == nil {
-			_ = exec.Command(path, c[1:]...).Start()
+		if path, err := sysx.LookPath(c[0]); err == nil {
+			_ = sysx.Command(path, c[1:]...).Start()
 			return
 		}
 	}
 }
 
 func isTermux() bool {
-	_, err := exec.LookPath("termux-open-url")
+	_, err := sysx.LookPath("termux-open-url")
 	return err == nil
 }
 
