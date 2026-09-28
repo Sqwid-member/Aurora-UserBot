@@ -184,17 +184,24 @@ build_from_source() {
   fi
 
   if [ -d "$src/.git" ]; then
-    say "Оновлення вихідного коду..."
+    say "Оновлення репозиторію..."
     git -C "$src" fetch origin main || true
     git -C "$src" reset --hard origin/main || true
   else
+    rm -rf "$src"
     mkdir -p "$(dirname "$src")"
     git clone --depth 1 "$clone_url" "$src" || die "git clone не вдався"
   fi
 
-  say "Компіляція статичного бінарника..."
-  ( cd "$src" && CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
-      go build -trimpath -ldflags "-s -w" -o "$BIN_DIR/aurora" ./cmd/aurora )
+  if [ -f "$src/prebuilt/aurora-${GOARCH}" ]; then
+    say "Використовую перевірений готовий бінарник: prebuilt/aurora-${GOARCH}"
+    cp "$src/prebuilt/aurora-${GOARCH}" "$BIN_DIR/aurora"
+    chmod 755 "$BIN_DIR/aurora"
+  else
+    say "Компіляція статичного бінарника..."
+    ( cd "$src" && CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" \
+        go build -trimpath -ldflags "-s -w" -o "$BIN_DIR/aurora" ./cmd/aurora )
+  fi
   chmod 755 "$BIN_DIR/aurora"
   if [ -d "$src/plugins" ]; then
     for d in echo pulse autoaway hello; do
