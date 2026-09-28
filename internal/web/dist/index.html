@@ -3,31 +3,42 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0e0f12">
+  <meta name="theme-color" content="#080808">
   <title>Aurora UserBot — Панель керування</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="app.css">
   <script>
+    // Перше фарбування до завантаження скриптів: підставляє закешовані токени
+    // обраної теми, якщо вона не є базовою (OC-2 лежить у theme.css).
     (function () {
       var root = document.documentElement;
+      var scheme = 'system';
+      var themeId = 'oc-2';
       try {
-        var style = JSON.parse(localStorage.getItem('aurora.style') || '"minimal"');
-        var pref = JSON.parse(localStorage.getItem('aurora.theme') || '"auto"');
-        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        root.setAttribute('data-style', style === 'expensive' ? 'expensive' : 'minimal');
-        root.setAttribute('data-theme', style === 'expensive' ? 'dark' : (pref === 'auto' ? (dark ? 'dark' : 'light') : pref));
-      } catch (e) { root.setAttribute('data-style', 'minimal'); root.setAttribute('data-theme', 'dark'); }
+        scheme = localStorage.getItem('aurora-color-scheme') || 'system';
+        themeId = localStorage.getItem('aurora-theme-id') || 'oc-2';
+      } catch (e) {}
+      var mode = (scheme === 'light' || scheme === 'dark')
+        ? scheme
+        : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (themeId !== 'oc-2') {
+        try {
+          var cached = localStorage.getItem('aurora-theme-css-' + mode);
+          if (cached) {
+            var sheet = document.createElement('style');
+            sheet.id = 'aurora-theme-preload';
+            sheet.textContent = cached;
+            document.head.appendChild(sheet);
+          }
+        } catch (e) {}
+      }
+      root.setAttribute('data-theme', themeId);
+      root.setAttribute('data-color-scheme', mode);
+      root.style.backgroundColor = mode === 'dark' ? '#080808' : '#fafafa';
     })();
   </script>
-  <link rel="stylesheet" href="app.css">
 </head>
 <body>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="aurora-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#d0bcff"/><stop offset="100%" stop-color="#70b6ff"/></linearGradient></defs></svg>
-
-<div class="bg-quiet">
-  <div class="tide-current"></div>
-  <div class="newsprint-halftone"></div>
-  <div class="paper-fibers"></div>
-</div>
 
 <div class="app-container">
   <!-- Top App Bar -->
@@ -94,24 +105,18 @@
 
       <!-- Power Controls -->
       <div class="theme-wrap">
-        <button class="btn btn-sm" id="btn-theme" title="Оформлення (T)" aria-label="Оформлення" aria-haspopup="true" aria-expanded="false"></button>
-        <div class="theme-pop" id="theme-pop" role="dialog" aria-label="Оформлення">
-          <div class="theme-pop-title">Оформлення</div>
-          <button type="button" class="theme-opt" data-style="minimal">
-            <span class="theme-swatch sw-minimal"></span>
-            <span class="theme-opt-text"><b>Мінімалізм</b><small>Плоска, тиха, без світіння</small></span>
-          </button>
-          <button type="button" class="theme-opt" data-style="expensive">
-            <span class="theme-swatch sw-expensive"></span>
-            <span class="theme-opt-text"><b>MD3 Expensive</b><small>Матове скло, градієнти, світіння</small></span>
-          </button>
-          <div class="theme-pop-title">Режим</div>
+        <button class="btn btn-sm" id="btn-theme" title="Тема (T)" aria-label="Тема" aria-haspopup="true" aria-expanded="false">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5 11 5.67 11 6.5 10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+        </button>
+        <div class="theme-pop" id="theme-pop" role="dialog" aria-label="Тема">
+          <div class="theme-pop-title">Колірна схема</div>
           <div class="seg" id="theme-mode">
-            <button type="button" data-mode="auto">Авто</button>
+            <button type="button" data-mode="system">Системна</button>
             <button type="button" data-mode="light">Світла</button>
             <button type="button" data-mode="dark">Темна</button>
           </div>
-          <p class="theme-note" id="theme-note">MD3 Expensive працює лише в темному режимі.</p>
+          <div class="theme-pop-title">Тема інтерфейсу</div>
+          <div class="theme-list" id="theme-list" role="listbox" aria-label="Теми"></div>
         </div>
       </div>
       <button class="btn btn-sm" id="btn-refresh" title="Оновити дані">
@@ -957,5 +962,6 @@
 <div class="toast-container" id="toast-container"></div>
 
 <script src="app.js"></script>
+<script type="module" src="theme/index.js"></script>
 </body>
 </html>

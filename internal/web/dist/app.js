@@ -101,58 +101,74 @@
     if (savedTab && $(`#tab-${savedTab}`)) switchTab(savedTab);
   } catch {}
 
-  // ---------- Themes & Styles ----------
+  // ---------- Themes ----------
   function initTheme() {
-    const root = document.documentElement;
     const pop = $('#theme-pop');
     const btnTheme = $('#btn-theme');
+    const list = $('#theme-list');
+    const engine = () => window.AuroraTheme || null;
 
-    const updateUI = () => {
-      const style = root.getAttribute('data-style') || 'minimal';
-      const theme = root.getAttribute('data-theme') || 'dark';
-      $$('.theme-opt').forEach((o) => o.classList.toggle('active', o.dataset.style === style));
-      $$('#theme-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === theme));
-      $('#theme-note').classList.toggle('visible', style === 'expensive');
+    const whenReady = (fn) => {
+      if (window.AuroraTheme) fn();
+      else window.addEventListener('aurora:theme-ready', fn, { once: true });
+    };
+
+    const renderList = () => {
+      const api = engine();
+      if (!api || !list || list.dataset.rendered) return;
+      list.innerHTML = '';
+      api.themes.forEach((theme) => {
+        const sample = api.sample(theme.id);
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'theme-opt';
+        opt.dataset.theme = theme.id;
+        opt.setAttribute('role', 'option');
+        opt.innerHTML =
+          '<span class="theme-dot" style="background:linear-gradient(135deg,' +
+          sample.light + ' 50%,' + sample.dark + ' 50%)"></span>' +
+          '<span class="theme-opt-name"></span>';
+        opt.querySelector('.theme-opt-name').textContent = theme.name;
+        opt.onclick = () => { api.setTheme(theme.id); sync(); };
+        list.appendChild(opt);
+      });
+      list.dataset.rendered = '1';
+      sync();
+    };
+
+    const sync = () => {
+      const api = engine();
+      if (api) {
+        const state = api.current();
+        $$('.theme-opt', list).forEach((o) => o.classList.toggle('active', o.dataset.theme === state.themeId));
+        $$('#theme-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.scheme));
+      }
       if (btnTheme) btnTheme.setAttribute('aria-expanded', pop?.classList.contains('open') ? 'true' : 'false');
     };
+
+    const close = () => { if (pop) pop.classList.remove('open'); sync(); };
 
     if (btnTheme && pop) {
       btnTheme.onclick = (e) => {
         e.stopPropagation();
-        pop.classList.toggle('open');
-        updateUI();
+        const opening = !pop.classList.contains('open');
+        pop.classList.toggle('open', opening);
+        if (opening) whenReady(() => { renderList(); sync(); });
+        else sync();
       };
-
       document.addEventListener('click', (e) => {
-        if (!pop.contains(e.target) && e.target !== btnTheme) {
-          pop.classList.remove('open');
-          updateUI();
-        }
+        if (!pop.contains(e.target) && e.target !== btnTheme) close();
       });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
     }
 
-    $$('.theme-opt').forEach((opt) => {
-      opt.onclick = () => {
-        const style = opt.dataset.style;
-        root.setAttribute('data-style', style);
-        try { localStorage.setItem('aurora.style', JSON.stringify(style)); } catch {}
-        if (style === 'expensive') {
-          root.setAttribute('data-theme', 'dark');
-        }
-        updateUI();
-      };
-    });
-
     $$('#theme-mode button').forEach((btn) => {
-      btn.onclick = () => {
-        const mode = btn.dataset.mode;
-        root.setAttribute('data-theme', mode === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : mode);
-        try { localStorage.setItem('aurora.theme', JSON.stringify(mode)); } catch {}
-        updateUI();
-      };
+      btn.onclick = () => whenReady(() => { window.AuroraTheme.setScheme(btn.dataset.mode); sync(); });
     });
 
-    updateUI();
+    window.addEventListener('aurora:theme-change', sync);
+    whenReady(() => { renderList(); sync(); });
+    sync();
   }
 
   // ---------- Status & Core Metrics ----------
