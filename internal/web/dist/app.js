@@ -865,17 +865,42 @@
   });
 
   // ---------- Auth Login Modal ----------
+  function normalizePhone(val) {
+    let p = val.replace(/[^\d+]/g, "");
+    if (p.startsWith("0") && p.length === 10) p = "+38" + p;
+    else if (p.startsWith("380")) p = "+" + p;
+    else if (p.startsWith("48") && p.length === 11) p = "+" + p;
+    else if (!p.startsWith("+") && p.length > 0) p = "+" + p;
+    return p;
+  }
+
   $('#form-auth-phone')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const phone = $('#auth-phone-input').value.trim();
-    if (!phone) return;
+    const btn = $('#form-auth-phone button[type="submit"]');
+    const input = $('#auth-phone-input');
+    const phone = normalizePhone(input.value.trim());
+    if (!phone) {
+      toast('Помилка', 'Введіть номер телефону', 'error');
+      return;
+    }
+    input.value = phone;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Надсилаємо код...';
+    }
     try {
       await api('/api/auth/code-request', { method: 'POST', body: JSON.stringify({ phone }) });
-      toast('Вхід', 'Код успішно надіслано', 'ok');
+      toast('Вхід', 'Код підтвердження успішно надіслано в Telegram!', 'ok');
       $('#auth-step-phone').style.display = 'none';
       $('#auth-step-code').style.display = 'block';
+      setTimeout(() => $('#auth-code-input')?.focus(), 100);
     } catch (err) {
-      toast('Помилка', err.message, 'error');
+      toast('Помилка', err.message || 'Не вдалося надіслати код', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Отримати код';
+      }
     }
   });
 
@@ -1078,10 +1103,20 @@
 
   $('#form-add-account-phone')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = $('#form-add-account-phone button[type="submit"]');
     const title = $('#add-acc-title').value.trim();
-    const phone = $('#add-acc-phone').value.trim();
-    if (!phone) return;
+    const input = $('#add-acc-phone');
+    const phone = normalizePhone(input.value.trim());
+    if (!phone) {
+      toast('Помилка', 'Введіть номер телефону', 'error');
+      return;
+    }
+    input.value = phone;
 
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Надсилаємо код...';
+    }
     try {
       const newAcc = await api('/api/accounts', {
         method: 'POST',
@@ -1095,8 +1130,14 @@
       toast('Акаунт створено', 'Код підтвердження надіслано в Telegram', 'ok');
       $('#add-acc-step-phone').style.display = 'none';
       $('#add-acc-step-code').style.display = 'block';
+      setTimeout(() => $('#add-acc-code-input')?.focus(), 100);
     } catch (err) {
-      toast('Помилка', err.message, 'error');
+      toast('Помилка', err.message || 'Не вдалося надіслати код', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Отримати код';
+      }
     }
   });
 

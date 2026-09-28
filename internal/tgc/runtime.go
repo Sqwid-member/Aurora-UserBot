@@ -82,8 +82,7 @@ type Runtime struct {
 	step   AuthStep
 
 	codeHash string
-	authCode chan string
-	authPass chan string
+	authDone chan struct{}
 
 	namesMu sync.RWMutex
 	names   map[int64]proto.PeerInfo
@@ -100,8 +99,7 @@ func New(opts Options) *Runtime {
 		state:    proto.StateOffline,
 		step:     AuthNone,
 		names:    make(map[int64]proto.PeerInfo, 128),
-		authCode: make(chan string, 1),
-		authPass: make(chan string, 1),
+		authDone: make(chan struct{}, 1),
 	}
 }
 
@@ -208,14 +206,31 @@ func (r *Runtime) Run(ctx context.Context) error {
 	r.setState(proto.StateConnecting, "")
 
 	return client.Run(ctx, func(ctx context.Context) error {
-		if err := r.authorize(ctx); err != nil {
-			r.setState(proto.StateUnauth, errString(err))
-			if errors.Is(err, ErrLoginAborted) {
-				return nil
-			}
-			return err
+		aclient := client.Auth()
+		status, err := aclient.Status(ctx)
+		if err == nil && status.Authorized {
+			return r.serve(ctx)
 		}
-		return r.serve(ctx)
+
+		r.setState(proto.StateUnauth, "")
+		r.mu.Lock()
+		if r.step == AuthNone || r.step == AuthSignedIn {
+			r.step = AuthPhone
+		}
+		r.mu.Unlock()
+
+		// Wait until login completes via Web/CLI or context cancels
+		for {
+			select {
+			case <-r.authDone:
+				status, err := aclient.Status(ctx)
+				if err == nil && status.Authorized {
+					return r.serve(ctx)
+				}
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 	})
 }
 
@@ -270,20 +285,103 @@ func (r *Runtime) serve(ctx context.Context) error {
 
 // ---- login ----
 
-func (r *Runtime) RequestCode(ctx context.Context, phone string) error {
-	r.mu.Lock()
-	if r.client == nil {
-		r.mu.Unlock()
-		return errors.New("tgc: not connected")
+// CleanPhone formats any phone number into international E.164 format (+380..., +48...).
+// ErrLoginAborted is returned when login cannot continue.
+var ErrLoginAborted = errors.New("tgc: login aborted")
+
+func CleanPhone(phone string) string {
+	var b strings.Builder
+	for _, ch := range phone {
+		if ch >= '0' && ch <= '9' {
+			b.WriteRune(ch)
+		} else if ch == '+' && b.Len() == 0 {
+			b.WriteRune(ch)
+		}
 	}
-	r.mu.Unlock()
-	r.setStep(AuthPhone)
-	return r.authorize(ctx)
+	s := b.String()
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "0") && len(s) == 10 {
+		return "+38" + s
+	}
+	if strings.HasPrefix(s, "380") {
+		return "+" + s
+	}
+	if strings.HasPrefix(s, "48") && len(s) == 11 {
+		return "+" + s
+	}
+	if !strings.HasPrefix(s, "+") {
+		return "+" + s
+	}
+	return s
 }
 
-// ErrLoginAborted is returned when the login flow cannot continue, e.g. the
-// phone number is not registered on Telegram.
-var ErrLoginAborted = errors.New("tgc: login aborted")
+func translateTelegramErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	u := strings.ToUpper(msg)
+	switch {
+	case strings.Contains(u, "PHONE_NUMBER_INVALID"):
+		return errors.New("неправильний номер телефону. Вкажіть у міжнародному форматі (+380XXXXXXXXX або +48XXXXXXXXX)")
+	case strings.Contains(u, "PHONE_CODE_INVALID"):
+		return errors.New("невірний код підтвердження")
+	case strings.Contains(u, "PHONE_CODE_EXPIRED"):
+		return errors.New("термін дії коду вичерпано. Надішліть код повторно")
+	case strings.Contains(u, "FLOOD_WAIT"):
+		return errors.New("забагато спроб від Telegram (FLOOD_WAIT). Зачекайте деякий час перед наступною спробою")
+	case strings.Contains(u, "PASSWORD_HASH_INVALID"):
+		return errors.New("невірний 2FA пароль")
+	case strings.Contains(u, "API_ID_INVALID"):
+		return errors.New("Telegram відхилив API ключі (API_ID_INVALID). Виконайте 'aurora setup' для власних ключів")
+	case strings.Contains(u, "PHONE_NUMBER_BANNED"):
+		return errors.New("цей номер телефону заблоковано в Telegram")
+	default:
+		return err
+	}
+}
+
+// RequestCode initiates login by sending a verification code to the phone number.
+func (r *Runtime) RequestCode(ctx context.Context, phone string) error {
+	phone = CleanPhone(phone)
+	if phone == "" {
+		return errors.New("номер телефону не може бути порожнім")
+	}
+
+	r.mu.Lock()
+	r.opts.Phone = phone
+	client := r.client
+	r.mu.Unlock()
+
+	if client == nil {
+		return errors.New("Telegram клієнт ще підключається... Зачекайте пару секунд")
+	}
+
+	aclient := client.Auth()
+	r.log.Info("requesting login code", logx.F("phone", maskPhone(phone)))
+
+	sent, err := aclient.SendCode(ctx, phone, auth.SendCodeOptions{AllowAppHash: true})
+	if err != nil {
+		r.mu.Lock()
+		r.step = AuthPhone
+		r.mu.Unlock()
+		return translateTelegramErr(err)
+	}
+
+	sc, ok := sent.(*tg.AuthSentCode)
+	if !ok {
+		return fmt.Errorf("неочікувана відповідь від Telegram: %T", sent)
+	}
+
+	r.mu.Lock()
+	r.codeHash = sc.PhoneCodeHash
+	r.step = AuthCode
+	r.mu.Unlock()
+
+	return nil
+}
 
 // Phone returns the configured phone number.
 func (r *Runtime) Phone() string {
@@ -295,7 +393,7 @@ func (r *Runtime) Phone() string {
 // SetPhone updates the phone number used by the login flow.
 func (r *Runtime) SetPhone(phone string) {
 	r.mu.Lock()
-	r.opts.Phone = strings.TrimSpace(phone)
+	r.opts.Phone = CleanPhone(phone)
 	r.mu.Unlock()
 }
 
@@ -305,116 +403,86 @@ func (r *Runtime) setStep(s AuthStep) {
 	r.mu.Unlock()
 }
 
-// SubmitCode hands the login code to a waiting authorize call.
+// SubmitCode hands the login code to Telegram.
 func (r *Runtime) SubmitCode(code string) error {
 	code = strings.TrimSpace(code)
 	if code == "" {
-		return errors.New("tgc: empty code")
-	}
-	select {
-	case r.authCode <- code:
-		return nil
-	default:
-		return errors.New("tgc: a code submission is already pending")
-	}
-}
-
-// SubmitPassword hands the 2FA password to a waiting authorize call.
-func (r *Runtime) SubmitPassword(pass string) error {
-	if pass == "" {
-		return errors.New("tgc: empty password")
-	}
-	select {
-	case r.authPass <- pass:
-		return nil
-	default:
-		return errors.New("tgc: a password submission is already pending")
-	}
-}
-
-// authorize runs the interactive login when the session is not authorized yet.
-func (r *Runtime) authorize(ctx context.Context) error {
-	aclient := r.client.Auth()
-
-	status, err := aclient.Status(ctx)
-	if err != nil {
-		return fmt.Errorf("auth status: %w", err)
-	}
-	if status.Authorized {
-		return nil
+		return errors.New("код підтвердження не може бути порожнім")
 	}
 
 	r.mu.RLock()
-	phone := strings.TrimSpace(r.opts.Phone)
+	client := r.client
+	phone := r.opts.Phone
+	codeHash := r.codeHash
 	r.mu.RUnlock()
-	if phone == "" {
-		r.setStep(AuthPhone)
-		p, err := r.await(ctx, r.authCode, "phone number")
-		if err != nil {
-			return err
-		}
-		phone = strings.TrimSpace(p)
+
+	if client == nil {
+		return errors.New("клієнт Telegram не підключено")
 	}
 
-	r.log.Info("requesting login code", logx.F("phone", maskPhone(phone)))
-	r.setStep(AuthCode)
+	aclient := client.Auth()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	sent, err := aclient.SendCode(ctx, phone, auth.SendCodeOptions{AllowAppHash: true})
-	if err != nil {
-		return fmt.Errorf("send code: %w", err)
-	}
-	sc, ok := sent.(*tg.AuthSentCode)
-	if !ok {
-		return fmt.Errorf("unexpected code response %T", sent)
-	}
-	r.mu.Lock()
-	r.codeHash = sc.PhoneCodeHash
-	r.mu.Unlock()
-
-	code, err := r.await(ctx, r.authCode, "login code")
-	if err != nil {
-		return err
-	}
-
-	r.setStep(AuthNone)
-	_, signErr := aclient.SignIn(ctx, phone, strings.TrimSpace(code), sc.PhoneCodeHash)
+	_, signErr := aclient.SignIn(ctx, phone, code, codeHash)
 	switch {
 	case signErr == nil:
+		r.mu.Lock()
+		r.step = AuthSignedIn
+		r.mu.Unlock()
+		select {
+		case r.authDone <- struct{}{}:
+		default:
+		}
 		return nil
-	case errors.Is(signErr, auth.ErrPasswordAuthNeeded):
+	case errors.Is(signErr, auth.ErrPasswordAuthNeeded) || strings.Contains(strings.ToUpper(signErr.Error()), "SESSION_PASSWORD_NEEDED"):
 		r.log.Info("two-factor password required")
 		r.setStep(AuthPassword)
-		pass, err := r.await(ctx, r.authPass, "2FA password")
-		if err != nil {
-			return err
-		}
-		r.setStep(AuthNone)
-		if _, err := aclient.Password(ctx, pass); err != nil {
-			return fmt.Errorf("2FA: %w", err)
-		}
-		return nil
+		return errors.New("SESSION_PASSWORD_NEEDED")
 	default:
 		var needSignUp *auth.SignUpRequired
 		if errors.As(signErr, &needSignUp) {
-			return fmt.Errorf("this phone number is not registered: %w", ErrLoginAborted)
+			return errors.New("цей номер не зареєстрований у Telegram")
 		}
-		return fmt.Errorf("sign in: %w", signErr)
+		return translateTelegramErr(signErr)
 	}
 }
 
-// await blocks for interactive input with a hard deadline.
-func (r *Runtime) await(ctx context.Context, ch chan string, what string) (string, error) {
-	timer := time.NewTimer(5 * time.Minute)
-	defer timer.Stop()
-	select {
-	case v := <-ch:
-		return v, nil
-	case <-timer.C:
-		return "", fmt.Errorf("timed out waiting for %s", what)
-	case <-ctx.Done():
-		return "", ctx.Err()
+// SubmitPassword hands the 2FA password to Telegram.
+func (r *Runtime) SubmitPassword(pass string) error {
+	pass = strings.TrimSpace(pass)
+	if pass == "" {
+		return errors.New("пароль не може бути порожнім")
 	}
+
+	r.mu.RLock()
+	client := r.client
+	r.mu.RUnlock()
+
+	if client == nil {
+		return errors.New("клієнт Telegram не підключено")
+	}
+
+	aclient := client.Auth()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if _, err := aclient.Password(ctx, pass); err != nil {
+		return translateTelegramErr(err)
+	}
+
+	r.mu.Lock()
+	r.step = AuthSignedIn
+	r.mu.Unlock()
+
+	select {
+	case r.authDone <- struct{}{}:
+	default:
+	}
+	return nil
 }
+
+
 
 // Logout terminates the current Telegram session and drops the local one.
 func (r *Runtime) Logout(ctx context.Context) error {
