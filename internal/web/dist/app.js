@@ -1057,6 +1057,32 @@
     }
   });
 
+  $('#btn-web-bookmarklet-copy')?.addEventListener('click', async () => {
+    const code = ($('#web-bookmarklet')?.textContent || '').trim();
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast('Букмарклет', 'Код скопійовано — вставте його в адресу закладки', 'ok');
+    } catch {
+      toast('Букмарклет', 'Не вдалося скопіювати — виділіть код вручну', 'error');
+    }
+  });
+
+  $('#form-import-web')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = $('#auth-web-input').value.trim();
+    const dc = parseInt($('#auth-web-dc')?.value || '0', 10) || 0;
+    if (!data) { toast('Помилка', 'Вставте JSON з букмарклета', 'error'); return; }
+    try {
+      const res = await api('/api/session/import-web', { method: 'POST', body: JSON.stringify({ dc, data }) });
+      toast('Сесія', `Сесію імпортовано (DC ${res.dc}). Перезапустіть ядро.`, 'ok');
+      closeModal('#modal-auth');
+      refreshStatus();
+    } catch (err) {
+      toast('Помилка імпорту з Web', err.message, 'error');
+    }
+  });
+
   // ----- QR на цьому ж телефоні: старт + опитування токена -----
   let qrTimer = null;
   function qrStopPoll() {

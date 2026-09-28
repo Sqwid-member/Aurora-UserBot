@@ -697,6 +697,7 @@
       <!-- Tab 1: QR (без сканування, одним тапом) -->
       <div id="auth-tab-qr">
         <p class="auth-lead">Сканувати нічого не треба. Натисніть «Отримати посилання», потім «Відкрити в Telegram» на <b>цьому ж телефоні</b> — застосунок Telegram сам попросить підтвердити вхід. Номер, SMS і 2FA не потрібні.</p>
+        <div class="warn-box"><b>Важливо:</b> посилання має відкрити <b>офіційний Telegram</b>. Модифіковані клієнти (з плагінами, темами тощо) замість підтвердження часто показують вікно сканера — це їхнє обмеження. Якщо бачите «Scan QR Code» замість підтвердження: поставте тимчасово офіційний Telegram, увійдіть там у свій акаунт, тапніть посилання і підтвердіть.</div>
         <div class="qr-box" id="qr-box">
           <div class="qr-status" id="qr-status">Посилання ще не запитано.</div>
           <div class="qr-link" id="qr-link" hidden></div>
@@ -727,7 +728,7 @@
               <button type="button" class="btn" id="btn-auth-sms">Код по SMS</button>
             </div>
           </form>
-          <div class="hint-box">Якщо код приходить лише «в застосунок», а застосунок не відкрито — тисніть <b>«Код по SMS»</b> або <b>«Надіслати ще раз»</b> після першого запиту: Telegram перемкне канал на SMS/дзвінок, коли це дозволено.</div>
+          <div class="hint-box">Якщо код приходить лише «в застосунок», а застосунок не відкрито — тисніть <b>«Код по SMS»</b> або <b>«Надіслати ще раз»</b> після першого запиту: Telegram перемкне канал на SMS/дзвінок, коли це дозволено. SMS може не дійти в роумінгу, на віртуальні/Fragment-номери або коли ліміти стандарних ключів вичерпано — тоді допоможе вхід по QR або спосіб 2 у вкладці «Імпорт сесії» (офіційний Telegram Web).</div>
         </div>
 
         <!-- Step 2: Code -->
@@ -783,7 +784,7 @@
 
       <!-- Tab 3: session import -->
       <div id="auth-tab-session" hidden>
-        <p class="auth-lead">Вставте готову <b>StringSession</b> (Telethon-формат, починається з <code>1…</code>). Це офіційний спосіб перенести сесію з іншого клієнта — нічого перехоплювати не треба.</p>
+        <p class="auth-lead"><b>Спосіб 1 — StringSession.</b> Вставте готову <b>StringSession</b> (Telethon-формат, починається з <code>1…</code>). Це офіційний спосіб перенести сесію з іншого клієнта — нічого перехоплювати не треба.</p>
         <form id="form-import-session">
           <div class="form-group">
             <label class="form-label">Рядок сесії</label>
@@ -791,6 +792,39 @@
           </div>
           <button type="submit" class="btn btn-primary" style="width:100%;">Імпортувати сесію</button>
         </form>
+
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--md-border-subtle);">
+          <p class="auth-lead"><b>Спосіб 2 — через офіційний Telegram Web</b> (рятує, коли код не приходить сюди, а QR ніде підтвердити). Ви логінитесь <b>самі у своєму браузері</b> на офіційному сайті — Aurora нічого не перехоплює, ви лише вставляєте сюди скопійовані ключі.</p>
+          <ol class="guide-steps">
+            <li>Відкрийте <a href="https://web.telegram.org" target="_blank" rel="noopener">web.telegram.org</a> у браузері на цьому телефоні й увійдіть (там SMS приходить, бо це офіційний клієнт).</li>
+            <li>Створіть закладку з кодом нижче: додайте будь-яку закладку, потім відредагуйте її і вставте код в поле адреси. Або скопіюйте код кнопкою.</li>
+            <li>Перебуваючи на сторінці <code>web.telegram.org</code>, відкрийте цю закладку — ключі скопіюються в буфер.</li>
+            <li>Вставте скопійоване нижче і натисніть «Імпортувати з Web».</li>
+          </ol>
+          <div class="form-group" style="margin-top:10px;">
+            <label class="form-label">Код закладки-експортера (букмарклет)</label>
+            <pre class="code-block" id="web-bookmarklet">javascript:void(async function(){try{const o={};for(let i=0;i&lt;localStorage.length;i++){const k=localStorage.key(i);if(/auth_key|server_salt|^dc$/i.test(k))o[k]=localStorage.getItem(k);}if(!Object.keys(o).length){alert('Ключів не знайдено: спочатку увійдіть на web.telegram.org');return;}await navigator.clipboard.writeText(JSON.stringify(o));alert('Скопійовано '+Object.keys(o).length+' записів. Вставте їх в Aurora.');}catch(e){alert('Помилка: '+e);}})();</pre>
+            <button type="button" class="btn btn-sm" id="btn-web-bookmarklet-copy" style="margin-top:8px;">Копіювати код закладки</button>
+          </div>
+          <form id="form-import-web">
+            <div class="form-group">
+              <label class="form-label">Вставлені ключі з Telegram Web (JSON)</label>
+              <textarea class="form-textarea" id="auth-web-input" rows="3" placeholder='{"dc4_auth_key":"…","dc":4,…}' spellcheck="false" style="font-family:var(--font-mono,monospace);"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Дата-центр (зазвичай визначається сам)</label>
+              <select class="form-select" id="auth-web-dc">
+                <option value="0">Авто</option>
+                <option value="1">DC 1</option>
+                <option value="2">DC 2</option>
+                <option value="3">DC 3</option>
+                <option value="4">DC 4</option>
+                <option value="5">DC 5</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Імпортувати з Web</button>
+          </form>
+        </div>
         <details class="guide">
           <summary>Як отримати StringSession з офіційного клієнта (2 хв)</summary>
           <ol>

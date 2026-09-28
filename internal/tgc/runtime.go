@@ -970,6 +970,12 @@ func (r *Runtime) ImportSession(telethonSession string) error {
 	return nil
 }
 
+// ImportWebSession replaces the stored session from a Telegram Web
+// localStorage export (see ParseWebExport). overrideDC is 0 for auto.
+func (r *Runtime) ImportWebSession(payload string, overrideDC int) (int, error) {
+	return ImportWebExport(r.opts.SessionPath, payload, overrideDC)
+}
+
 // ExportSession renders the stored session as a Telethon string.
 func (r *Runtime) ExportSession() (string, error) { return ExportSession(r.opts.SessionPath) }
 

@@ -694,6 +694,16 @@ func (a *App) ImportSession(s string) error {
 	return tg.ImportSession(s)
 }
 
+// ImportWebSession implements web.Backend: stores a Telegram Web
+// localStorage export as the local session. Returns the DC used.
+func (a *App) ImportWebSession(dc int, payload string) (int, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return 0, err
+	}
+	return tg.ImportWebSession(payload, dc)
+}
+
 // Logout implements web.Backend.
 func (a *App) Logout(ctx context.Context) error {
 	tg, err := a.tg()
@@ -1235,6 +1245,15 @@ func (a *App) ImportSessionForAccount(accID string, s string) error {
 		return errors.New("акаунт Telegram не налаштовано")
 	}
 	return tg.ImportSession(s)
+}
+
+// ImportWebSessionForAccount is the per-account Telegram Web import.
+func (a *App) ImportWebSessionForAccount(accID string, dc int, payload string) (int, error) {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return 0, errors.New("акаунт Telegram не налаштовано")
+	}
+	return tg.ImportWebSession(payload, dc)
 }
 
 func (a *App) LogoutForAccount(ctx context.Context, accID string) error {

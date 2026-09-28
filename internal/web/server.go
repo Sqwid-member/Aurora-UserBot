@@ -95,6 +95,8 @@ type Backend interface {
 	SessionForAccount(accID string) proto.SessionInfo
 	ImportSession(session string) error
 	ImportSessionForAccount(accID string, session string) error
+	ImportWebSession(dc int, payload string) (int, error)
+	ImportWebSessionForAccount(accID string, dc int, payload string) (int, error)
 	Logout(ctx context.Context) error
 	LogoutForAccount(ctx context.Context, accID string) error
 
@@ -215,6 +217,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/accounts/{id}/auth/qr", s.handleAccountStartQR)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/password", s.handleAccountPassword)
 	mux.HandleFunc("POST /api/accounts/{id}/session/import", s.handleAccountSessionImport)
+	mux.HandleFunc("POST /api/accounts/{id}/session/import-web", s.handleAccountSessionImportWeb)
 	mux.HandleFunc("POST /api/accounts/{id}/logout", s.handleAccountLogout)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	mux.HandleFunc("POST /api/config", s.handlePutConfig)
@@ -238,6 +241,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/password", s.handlePassword)
 	mux.HandleFunc("GET /api/session", s.handleSessionInfo)
 	mux.HandleFunc("POST /api/session/import", s.handleSessionImport)
+	mux.HandleFunc("POST /api/session/import-web", s.handleSessionImportWeb)
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 
 	mux.HandleFunc("GET /api/logs", s.handleLogs)
@@ -759,6 +763,28 @@ func (s *Server) handleSessionImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleSessionImportWeb stores a Telegram Web localStorage export
+// (see the panel's session tab for how to produce it) as the session.
+func (s *Server) handleSessionImportWeb(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	var req struct {
+		DC   int    `json:"dc"`
+		Data string `json:"data"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	dc, err := s.opts.Backend.ImportWebSession(req.DC, req.Data)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dc": dc})
+}
+
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if s.opts.ReadOnly {
 		writeErr(w, http.StatusForbidden, "core is in read-only mode")
@@ -1131,6 +1157,26 @@ func (s *Server) handleAccountSessionImport(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAccountSessionImportWeb(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	var req struct {
+		DC   int    `json:"dc"`
+		Data string `json:"data"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	dc, err := s.opts.Backend.ImportWebSessionForAccount(r.PathValue("id"), req.DC, req.Data)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dc": dc})
 }
 
 func (s *Server) handleAccountLogout(w http.ResponseWriter, r *http.Request) {

@@ -138,6 +138,8 @@ func cmdQRLogin(layout paths.Layout) error {
 	fmt.Println("  \033[2mбез номера телефону та SMS — сканувати не треба\033[0m")
 	fmt.Println("  \033[2mТапніть посилання нижче на цьому ж телефоні,\033[0m")
 	fmt.Println("  \033[2mTelegram сам попросить підтвердити вхід.\033[0m")
+	fmt.Println("  \033[2mВідкривати ТІЛЬКИ офіційним Telegram: моди замість\033[0m")
+	fmt.Println("  \033[2mпідтвердження показують сканер (обмеження модів).\033[0m")
 	fmt.Println()
 
 	go func() { _ = client.startQR() }()
