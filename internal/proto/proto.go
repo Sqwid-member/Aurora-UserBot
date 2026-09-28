@@ -17,8 +17,9 @@ const ProtocolVersion = 1
 
 // Event is the envelope the host pushes to plugins.
 type Event struct {
-	Name string `json:"name"`
-	Data any    `json:"data"`
+	AccountID string `json:"account_id,omitempty"`
+	Name      string `json:"name"`
+	Data      any    `json:"data"`
 }
 
 // Event names. Plugins subscribe by declaring them in their manifest, or by
@@ -134,6 +135,7 @@ type PeerInfo struct {
 
 // SendRequest is the payload of the tg.send method.
 type SendRequest struct {
+	AccountID string `json:"account_id,omitempty"`
 	Peer      string `json:"peer"`
 	Text      string `json:"text"`
 	ReplyTo   int    `json:"reply_to,omitempty"`
@@ -251,22 +253,36 @@ const (
 	StateError      SessionState = "error"
 )
 
+// AccountInfo describes a Telegram account in multi-account mode.
+type AccountInfo struct {
+	ID             string       `json:"id"`
+	Title          string       `json:"title"`
+	Phone          string       `json:"phone,omitempty"`
+	User           *User        `json:"user,omitempty"`
+	Session        SessionState `json:"session"`
+	SessionError   string       `json:"session_error,omitempty"`
+	EnabledPlugins []string     `json:"enabled_plugins"`
+	IsActive       bool         `json:"is_active"`
+}
+
 // Status is the payload behind GET /api/status.
 type Status struct {
-	Core        string           `json:"core"`
-	Version     string           `json:"version"`
-	GoVersion   string           `json:"go_version"`
-	Uptime      string           `json:"uptime"`
-	UptimeSec   int64            `json:"uptime_sec"`
-	MemoryMB    float64          `json:"memory_mb"`
-	Goroutines  int              `json:"goroutines"`
-	Session     SessionState     `json:"session"`
-	User        *User            `json:"user,omitempty"`
-	PluginCount int              `json:"plugin_count"`
-	PluginsUp   int              `json:"plugins_running"`
-	Web         WebStatus        `json:"web"`
-	MemLimitMB  int              `json:"mem_limit_mb"`
-	Counters    map[string]int64 `json:"counters,omitempty"`
+	Core          string           `json:"core"`
+	Version       string           `json:"version"`
+	GoVersion     string           `json:"go_version"`
+	Uptime        string           `json:"uptime"`
+	UptimeSec     int64            `json:"uptime_sec"`
+	MemoryMB      float64          `json:"memory_mb"`
+	Goroutines    int              `json:"goroutines"`
+	Session       SessionState     `json:"session"`
+	User          *User            `json:"user,omitempty"`
+	PluginCount   int              `json:"plugin_count"`
+	PluginsUp     int              `json:"plugins_running"`
+	Web           WebStatus        `json:"web"`
+	MemLimitMB    int              `json:"mem_limit_mb"`
+	Counters      map[string]int64 `json:"counters,omitempty"`
+	ActiveAccount string           `json:"active_account,omitempty"`
+	Accounts      []AccountInfo    `json:"accounts,omitempty"`
 }
 
 // WebStatus describes the control panel endpoint.

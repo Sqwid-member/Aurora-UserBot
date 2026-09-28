@@ -18,7 +18,6 @@ set -euo pipefail
 
 REPO="${AURORA_REPO:-Sqwid-member/Aurora-UserBot}"
 VERSION="${AURORA_VERSION:-latest}"
-BIN_DIR="${AURORA_BIN_DIR:-$HOME/bin}"
 DATA_DIR="${AURORA_HOME:-$HOME/.local/share/aurora}"
 
 say()  { printf '\033[35m▚▚▚\033[0m %s\n' "$*"; }
@@ -46,9 +45,12 @@ esac
 
 if [ -n "${PREFIX:-}" ] && [ "${PREFIX}" = "/data/data/com.termux/files/usr" ]; then
   IS_TERMUX=1
+  DEFAULT_BIN_DIR="${PREFIX}/bin"
 else
   IS_TERMUX=0
+  DEFAULT_BIN_DIR="$HOME/bin"
 fi
+BIN_DIR="${AURORA_BIN_DIR:-$DEFAULT_BIN_DIR}" 
 
 say "Aurora installer"
 printf '     репозиторій: %s\n' "$REPO"
@@ -77,40 +79,77 @@ chmod 700 "$DATA_DIR" "$DATA_DIR"/{etc,data,plugins,logs,cache,run} 2>/dev/null 
 fetch_prebuilt() {
   [ "${AURORA_FORCE_SRC:-0}" = "1" ] && return 1
 
-  local tag="$VERSION" asset url
-  if [ "$tag" = "latest" ]; then
-    tag="$(curl -fsSL --max-time 20 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-      | tr ',' '\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/p' | head -1)"
-    [ -n "$tag" ] || return 1
-    say "останній реліз: $tag"
-  fi
-
-  # Termux and Linux are the same binary; Android is an explicit alias for it.
+  local tag="$VERSION"
+  local candidates=()
   case "$OS" in
-    android) asset="aurora-linux-${GOARCH}.tar.gz" ;;
-    linux)   asset="aurora-linux-${GOARCH}.tar.gz" ;;
-    darwin)  asset="aurora-darwin-${GOARCH}" ;;
-    *)       return 1 ;;
+    android|linux)
+      candidates=("aurora-android-${GOARCH}.tar.gz" "aurora-linux-${GOARCH}.tar.gz")
+      ;;
+    darwin)
+      candidates=("aurora-darwin-${GOARCH}.tar.gz" "aurora-darwin-${GOARCH}")
+      ;;
+    *) return 1 ;;
   esac
 
-  url="https://github.com/$REPO/releases/download/${tag}/${asset}"
-  say "завантажую: $asset"
   local tmp
   tmp="$(mktemp -d 2>/dev/null || mktemp -d -t aurora)"
-  if ! curl -fsSL --retry 2 --max-time 300 -o "$tmp/a.bin" "$url"; then
-    rm -rf "$tmp"
-    return 1
+
+  for asset in "${candidates[@]}"; do
+    local url
+    if [ "$tag" = "latest" ]; then
+      url="https://github.com/$REPO/releases/latest/download/${asset}"
+    else
+      url="https://github.com/$REPO/releases/download/${tag}/${asset}"
+    fi
+
+    say "завантаження $asset..."
+    if curl -fsSL --retry 2 --connect-timeout 10 --max-time 180 -o "$tmp/archive.tar.gz" "$url" 2>/dev/null; then
+      if [ "${asset##*.}" = "gz" ]; then
+        if tar -C "$tmp" -xzf "$tmp/archive.tar.gz" 2>/dev/null; then
+          local found
+          found="$(find "$tmp" -type f -name "aurora*" ! -name "*.tar.gz" | head -n 1)"
+          if [ -n "$found" ] && [ -f "$found" ]; then
+            mv "$found" "$BIN_DIR/aurora"
+            chmod 755 "$BIN_DIR/aurora"
+            rm -rf "$tmp"
+            return 0
+          fi
+        fi
+      else
+        mv "$tmp/archive.tar.gz" "$BIN_DIR/aurora"
+        chmod 755 "$BIN_DIR/aurora"
+        rm -rf "$tmp"
+        return 0
+      fi
+    fi
+  done
+
+  # Fallback: query API if direct latest redirect failed
+  if [ "$tag" = "latest" ]; then
+    local api_tag
+    api_tag="$(curl -fsSL --max-time 15 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+      | tr ',' '\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/p' | head -1)"
+    if [ -n "$api_tag" ]; then
+      for asset in "${candidates[@]}"; do
+        url="https://github.com/$REPO/releases/download/${api_tag}/${asset}"
+        if curl -fsSL --retry 2 --max-time 180 -o "$tmp/archive.tar.gz" "$url" 2>/dev/null; then
+          if tar -C "$tmp" -xzf "$tmp/archive.tar.gz" 2>/dev/null; then
+            local found
+            found="$(find "$tmp" -type f -name "aurora*" ! -name "*.tar.gz" | head -n 1)"
+            if [ -n "$found" ] && [ -f "$found" ]; then
+              mv "$found" "$BIN_DIR/aurora"
+              chmod 755 "$BIN_DIR/aurora"
+              rm -rf "$tmp"
+              return 0
+            fi
+          fi
+        fi
+      done
+    fi
   fi
 
-  if [ "${asset##*.}" = "gz" ]; then
-    tar -C "$tmp" -xzf "$tmp/a.bin" || { rm -rf "$tmp"; return 1; }
-    mv "$tmp/aurora-linux-${GOARCH}" "$BIN_DIR/aurora" 2>/dev/null || return 1
-  else
-    mv "$tmp/a.bin" "$BIN_DIR/aurora"
-  fi
   rm -rf "$tmp"
-  chmod 755 "$BIN_DIR/aurora"
-  return 0
+  return 1
 }
 
 # --- 2. fallback: build from source ------------------------------------------
@@ -179,33 +218,52 @@ if ! "$BIN_DIR/aurora" version >/dev/null 2>&1; then
 fi
 
 echo
-say "Готово. $( "$BIN_DIR/aurora" version )"
+say "Готово! $( "$BIN_DIR/aurora" version )"
 cat <<EOF
 
   Бінарник:  $BIN_DIR/aurora
   Дані:      $DATA_DIR
 
-  Далі:
+  Швидке використання в Termux:
 
-    1) Отримайте app_id і app_hash на https://my.telegram.org
-       → API development tools. Це обов'язково: Telegram не приймає
-       реєстрації з пустими ключами, і жоден проєкт не має права
-       вигадувати їх замість вас.
+    1. Авторизація в Telegram:
+         aurora login       # вхід у терміналі (номер -> код -> пароль)
+         aurora login web   # вхід через веб-панель у браузері
 
-    2) Заповніть конфіг:
+    2. Робота з юзерботом:
+         aurora start       # запуск у фоні (працює при згортанні Termux)
+         aurora run         # запуск у відкритому терміналі
+         aurora status      # перевірка активності та пам'яті (RAM)
+         aurora logs        # живий журнал логів
+         aurora stop        # зупинка процесу
+         aurora panel       # адреса веб-панелі
 
-         nano $DATA_DIR/etc/config.json
+    3. Додатково (якщо виникають блокування або потрібні власні ключі):
+         aurora setup       # налаштування ключів my.telegram.org
 
-       або одразу:
-
-         aurora config > $DATA_DIR/etc/config.json && nano $DATA_DIR/etc/config.json
-
-    3) Запустіть:
-
-         aurora run
-
-  Панель підніметься на http://127.0.0.1:8420 — токен надрукує в термінал.
-  У Termux відкриється автоматично, якщо встановлено Termux:API.
-
-  Перевірити оточення:  aurora doctor
 EOF
+
+if [ -t 0 ] && [ -t 1 ]; then
+  if [ ! -f "$DATA_DIR/data/session.json" ]; then
+    printf "\n\033[36m🌌 Оберіть спосіб входу в Telegram:\033[0m\n"
+    printf "  1) \033[32mУ терміналі\033[0m прямо зараз (номер -> код -> пароль)\n"
+    printf "  2) \033[33mУ веб-панелі\033[0m через браузер (відкриється автоматично)\n"
+    printf "  3) Пропустити (увійти пізніше)\n"
+    printf "Ваш вибір [1/2/3, за замовчуванням 1]: "
+    read -r choice
+    case "${choice:-1}" in
+      1)
+        "$BIN_DIR/aurora" login
+        ;;
+      2)
+        "$BIN_DIR/aurora" login web
+        ;;
+      *)
+        say "Ви можете увійти пізніше:"
+        printf "    aurora login       # вхід у терміналі\n"
+        printf "    aurora login web   # вхід через браузер\n"
+        printf "    aurora start       # запуск фонової служби\n"
+        ;;
+    esac
+  fi
+fi

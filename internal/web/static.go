@@ -75,37 +75,62 @@ func serveGate(w http.ResponseWriter, r *http.Request) {
 const gateHTML = `<!DOCTYPE html>
 <html lang="uk"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>Aurora — доступ</title>
+<meta name="theme-color" content="#08090c">
+<title>Aurora — Авторизація</title>
 <style>
 :root{color-scheme:dark}
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f17;
- color:#e6edf7;font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;
- background-image:radial-gradient(900px 400px at 15% -10%,rgba(110,168,254,.14),transparent 60%),
- radial-gradient(700px 380px at 95% 0%,rgba(167,139,250,.12),transparent 60%)}
-.card{width:min(380px,calc(100% - 32px));background:#151d2e;border:1px solid #243049;
- border-radius:14px;padding:24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.35)}
-h1{margin:0 0 6px;font-size:26px}
-p{color:#8494b0;margin:0 0 16px}
-input{width:100%;padding:12px 14px;margin-bottom:12px;background:#121826;color:#e6edf7;
- border:1px solid #243049;border-radius:10px;font:inherit;text-align:center;letter-spacing:2px;outline:none}
-input:focus{border-color:#6ea8fe}
-button{width:100%;padding:12px;border:none;border-radius:10px;font:inherit;font-weight:700;
- cursor:pointer;color:#0b0f17;background:linear-gradient(135deg,#6ea8fe,#a78bfa)}
-.hint{font-size:12px;margin-top:14px;line-height:1.6}
-code{background:#121826;padding:2px 6px;border-radius:6px;color:#6ea8fe;font-size:12px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;display:grid;place-items:center;
+  background:#08090c;color:#f8fafc;
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;
+  letter-spacing:-0.01em;padding:20px;
+}
+.card{
+  width:min(360px,100%);background:#0e1017;border:1px solid rgba(255,255,255,0.1);
+  border-radius:14px;padding:28px 24px;text-align:center;
+  box-shadow:0 12px 36px -4px rgba(0,0,0,0.7);
+}
+.brand-icon{
+  width:40px;height:40px;margin:0 auto 14px;
+  background:#141722;border:1px solid rgba(255,255,255,0.12);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  color:#818cf8;box-shadow:0 0 20px rgba(99,102,241,0.2);
+}
+h1{margin:0 0 6px;font-size:20px;font-weight:700;color:#f8fafc;letter-spacing:-0.02em}
+p{color:#94a3b8;font-size:13px;margin:0 0 20px}
+input{
+  width:100%;padding:11px 14px;margin-bottom:12px;background:#10131d;color:#f8fafc;
+  border:1px solid rgba(255,255,255,0.12);border-radius:8px;font:inherit;font-size:14px;
+  text-align:center;letter-spacing:1px;outline:none;transition:border-color .15s,box-shadow .15s;
+}
+input:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.25)}
+button{
+  width:100%;padding:11px;border:none;border-radius:8px;font:inherit;font-size:13px;
+  font-weight:600;cursor:pointer;color:#ffffff;background:#6366f1;
+  transition:background .15s;box-shadow:0 1px 8px rgba(99,102,241,0.25);
+}
+button:hover{background:#4f46e5}
+.hint{font-size:11px;color:#64748b;margin-top:18px;line-height:1.6}
+code{background:#10131d;padding:2px 6px;border-radius:4px;color:#818cf8;font-size:11px;font-family:monospace}
 </style></head>
 <body><div class="card">
-<h1>🌌 Aurora</h1>
-<p>Введіть токен, надрукований ядром у терміналі.</p>
+<div class="brand-icon">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+  </svg>
+</div>
+<h1>Aurora</h1>
+<p>Введіть токен доступу для керування панеллю.</p>
 <form onsubmit="return go(event)">
-<input id="t" type="password" placeholder="токен" autocomplete="off" autofocus>
+<input id="t" type="password" placeholder="токен доступу" autocomplete="off" autofocus>
 <button type="submit">Увійти</button>
 </form>
 <p class="hint">
-Токен зберігається лише у HttpOnly-cookie цього браузера.<br>
-Або відкрийте посилання виду <code>http://127.0.0.1:8420/?token=…</code>
+Токен зберігається у безпечному HttpOnly-cookie.<br>
+Або використовуйте посилання: <code>http://127.0.0.1:8420/?token=…</code>
 </p>
 </div>
 <script>

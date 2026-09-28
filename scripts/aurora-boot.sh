@@ -21,7 +21,7 @@ while [ $i -lt 30 ]; do
 done
 sleep 15
 
-export PATH="$HOME/bin:$PATH"
+export PATH="${PREFIX:-/data/data/com.termux/files/usr}/bin:$HOME/bin:$PATH"
 LOG_DIR="$HOME/.local/share/aurora/logs"
 mkdir -p "$LOG_DIR"
 
@@ -34,5 +34,4 @@ if [ -f "$HOME/.local/share/aurora/run/aurora.pid" ]; then
   fi
 fi
 
-nohup aurora run >>"$LOG_DIR/boot.log" 2>&1 &
-echo "aurora запущено, pid $!"
+aurora start

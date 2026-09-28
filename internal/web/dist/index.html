@@ -1,147 +1,960 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0b0f17">
-<title>Aurora — панель керування</title>
-<link rel="stylesheet" href="app.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🌌</text></svg>">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e0f12">
+  <title>Aurora UserBot — Панель керування</title>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      try {
+        var style = JSON.parse(localStorage.getItem('aurora.style') || '"minimal"');
+        var pref = JSON.parse(localStorage.getItem('aurora.theme') || '"auto"');
+        var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        root.setAttribute('data-style', style === 'expensive' ? 'expensive' : 'minimal');
+        root.setAttribute('data-theme', style === 'expensive' ? 'dark' : (pref === 'auto' ? (dark ? 'dark' : 'light') : pref));
+      } catch (e) { root.setAttribute('data-style', 'minimal'); root.setAttribute('data-theme', 'dark'); }
+    })();
+  </script>
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
-<header class="topbar">
-  <div class="brand">
-    <span class="logo">🌌</span>
-    <div>
-      <div class="brand-name">Aurora</div>
-      <div class="brand-sub" id="brand-sub">v{{VERSION}}</div>
-    </div>
-  </div>
-  <div class="state-pill" id="state-pill" data-state="offline">
-    <span class="dot"></span><span id="state-text">offline</span>
-  </div>
-</header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="aurora-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#d0bcff"/><stop offset="100%" stop-color="#70b6ff"/></linearGradient></defs></svg>
 
-<nav class="tabs" role="tablist">
-  <button class="tab active" data-tab="status" role="tab">Статус</button>
-  <button class="tab" data-tab="plugins" role="tab">Плагіни</button>
-  <button class="tab" data-tab="auth" role="tab">Вхід</button>
-  <button class="tab" data-tab="chat" role="tab">Чат</button>
-  <button class="tab" data-tab="logs" role="tab">Логи</button>
-  <button class="tab" data-tab="settings" role="tab">Налаштування</button>
-</nav>
+<div class="bg-quiet">
+  <div class="tide-current"></div>
+  <div class="newsprint-halftone"></div>
+  <div class="paper-fibers"></div>
+</div>
 
-<main>
-  <!-- STATUS -->
-  <section class="panel active" id="panel-status">
-    <div class="grid stat-grid" id="stat-grid"></div>
-
-    <h2>Обліковий запис</h2>
-    <div class="card" id="account-card">
-      <div class="muted">Ядро ще не авторизоване. Відкрийте вкладку «Вхід».</div>
-    </div>
-
-    <h2>Події</h2>
-    <div class="card feed" id="event-feed">
-      <div class="muted">Очікування подій…</div>
-    </div>
-  </section>
-
-  <!-- PLUGINS -->
-  <section class="panel" id="panel-plugins">
-    <div class="toolbar">
-      <input id="plugin-filter" placeholder="Фільтр…" autocomplete="off">
-      <button id="plugin-install" class="ghost">+ Встановити</button>
-    </div>
-    <div class="plugin-list" id="plugin-list"></div>
-
-    <h2>Команди</h2>
-    <div class="card" id="command-list"><div class="muted">Команди з’являться тут.</div></div>
-  </section>
-
-  <!-- AUTH -->
-  <section class="panel" id="panel-auth">
-    <div class="card">
-      <h2>Авторизація</h2>
-      <div id="auth-body"><div class="muted">Перевіряю…</div></div>
-    </div>
-
-    <div class="card">
-      <h2>Сесія</h2>
-      <div id="session-body"><div class="muted">Перевіряю…</div></div>
-    </div>
-  </section>
-
-  <!-- CHAT -->
-  <section class="panel" id="panel-chat">
-    <div class="card">
-      <h2>Надіслати повідомлення</h2>
-      <input id="chat-peer" placeholder="@username, +380…, -100… або me" autocomplete="off">
-      <textarea id="chat-text" rows="4" placeholder="Текст…"></textarea>
-      <div class="row">
-        <label class="chk"><input type="checkbox" id="chat-silent"> без звуку</label>
-        <label class="chk"><input type="checkbox" id="chat-nopreview"> без прев’ю</label>
-        <button id="chat-send" class="primary">Надіслати</button>
+<div class="app-container">
+  <!-- Top App Bar -->
+  <header class="header">
+    <div class="brand">
+      <svg class="md-icon logo" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      <div class="brand-text">
+        <h1>Aurora UserBot <span class="version-pill" id="core-version">v{{VERSION}}</span></h1>
+        <div class="brand-subtitle">Високопродуктивний модульний юзербот для Termux & Linux</div>
       </div>
     </div>
-    <div class="card" id="chat-out"><div class="muted">Тут з’явиться результат.</div></div>
-  </section>
 
-  <!-- LOGS -->
-  <section class="panel" id="panel-logs">
-    <div class="toolbar">
-      <label class="chk"><input type="checkbox" id="log-follow" checked> стежити</label>
-      <button id="log-clear" class="ghost">Очистити</button>
+    <div class="header-status-group">
+      <!-- TG Status -->
+      <div class="status-pill" id="tg-status-pill">
+        <span class="status-dot" id="tg-status-dot"></span>
+        <span id="tg-status-text">Підключення...</span>
+      </div>
+
+      <!-- User Profile / Account Switcher -->
+      <div class="account-wrap" id="account-wrap">
+        <div class="user-pill" id="user-pill" title="Керування акаунтами" style="cursor:pointer;" aria-haspopup="true" aria-expanded="false">
+          <div class="user-avatar" id="user-avatar-char">?</div>
+          <span id="user-display-name">Користувач</span>
+          <svg class="md-icon sm" style="color:var(--md-text-tertiary); margin-left:2px;" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
+        </div>
+
+        <div class="account-pop" id="account-pop" role="dialog" aria-label="Вибір акаунта">
+          <div class="account-pop-header">
+            <span class="account-pop-title">Telegram Акаунти</span>
+            <span class="badge" id="accounts-count-badge">1</span>
+          </div>
+          <div class="accounts-list" id="accounts-dropdown-list">
+            <!-- Injected by JS -->
+          </div>
+          <div class="account-pop-footer">
+            <button type="button" class="btn btn-sm btn-primary" id="btn-open-add-account" style="width:100%;">
+              <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              <span>Додати акаунт</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RAM Gauge -->
+      <div class="ram-pill" id="ram-pill" title="Поточне використання оперативної пам'яті">
+        <svg class="md-icon sm" style="color:var(--md-primary);" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+        <span>RAM: <b id="ram-quick-val">--</b> MB</span>
+        <div class="ram-pill-bar-track">
+          <div class="ram-pill-bar-fill" id="ram-quick-bar" style="width: 0%"></div>
+        </div>
+        <button class="btn btn-sm btn-success" id="btn-quick-gc" title="Запустити примусове очищення пам'яті (GC)">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+          <span>GC</span>
+        </button>
+      </div>
+
+      <!-- Control Center Trigger -->
+      <button class="btn btn-control-menu" id="btn-open-control-menu" title="Центр управління юзерботом (Ctrl+K)">
+        <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+        <span>Меню</span>
+        <span class="shortcut-badge">⌘K</span>
+      </button>
+
+      <!-- Power Controls -->
+      <div class="theme-wrap">
+        <button class="btn btn-sm" id="btn-theme" title="Оформлення (T)" aria-label="Оформлення" aria-haspopup="true" aria-expanded="false"></button>
+        <div class="theme-pop" id="theme-pop" role="dialog" aria-label="Оформлення">
+          <div class="theme-pop-title">Оформлення</div>
+          <button type="button" class="theme-opt" data-style="minimal">
+            <span class="theme-swatch sw-minimal"></span>
+            <span class="theme-opt-text"><b>Мінімалізм</b><small>Плоска, тиха, без світіння</small></span>
+          </button>
+          <button type="button" class="theme-opt" data-style="expensive">
+            <span class="theme-swatch sw-expensive"></span>
+            <span class="theme-opt-text"><b>MD3 Expensive</b><small>Матове скло, градієнти, світіння</small></span>
+          </button>
+          <div class="theme-pop-title">Режим</div>
+          <div class="seg" id="theme-mode">
+            <button type="button" data-mode="auto">Авто</button>
+            <button type="button" data-mode="light">Світла</button>
+            <button type="button" data-mode="dark">Темна</button>
+          </div>
+          <p class="theme-note" id="theme-note">MD3 Expensive працює лише в темному режимі.</p>
+        </div>
+      </div>
+      <button class="btn btn-sm" id="btn-refresh" title="Оновити дані">
+        <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+      </button>
+      <button class="btn btn-sm btn-danger" id="btn-restart" title="Перезапустити юзербот">
+        <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+        <span>Перезапуск</span>
+      </button>
     </div>
-    <div class="logs" id="log-body"></div>
-  </section>
+  </header>
 
-  <!-- SETTINGS -->
-  <section class="panel" id="panel-settings">
-    <div class="card">
-      <h2>Налаштування</h2>
-      <div id="settings-body" class="muted">Завантаження…</div>
-      <div class="row end">
-        <button id="settings-save" class="primary">Зберегти</button>
-        <button id="settings-restart" class="ghost">Перезапустити ядро</button>
+  <!-- MD3 Navigation Rails & Tabs Bar -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-tab="overview">
+      <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Огляд</span>
+    </button>
+    <button class="tab-btn" data-tab="plugins">
+      <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5s-1.12-2.5-2.5-2.5z"/></svg>
+      <span>Плагіни</span>
+      <span class="badge" id="badge-plugins-count">0</span>
+    </button>
+    <button class="tab-btn" data-tab="console">
+      <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM8 14H6v-2h2v2zm0-3H6V9h2v2zm0-3H6V6h2v2zm7 6h-5v-2h5v2zm3-3h-8V9h8v2zm0-3h-8V6h8v2z"/></svg>
+      <span>Консоль & Чат</span>
+    </button>
+    <button class="tab-btn" data-tab="profile">
+      <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      <span>Профіль</span>
+    </button>
+    <button class="tab-btn" data-tab="settings">
+      <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+      <span>Налаштування & RAM</span>
+    </button>
+    <button class="tab-btn" data-tab="logs">
+      <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+      <span>Логи</span>
+      <span class="status-dot active" style="width:6px; height:6px;"></span>
+    </button>
+  </nav>
+
+  <!-- Tab 1: Overview -->
+  <main>
+    <section class="tab-section active" id="tab-overview">
+      <div class="cards-grid">
+        <!-- TG Status Card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Telegram Клієнт</span>
+            <span class="status-dot active" id="card-tg-dot"></span>
+          </div>
+          <div class="card-value" id="card-tg-state">Авторизовано</div>
+          <div class="card-subtext" id="card-tg-info">Завантаження інформації про сесію...</div>
+        </div>
+
+        <!-- Elastic RAM Card -->
+        <div class="card ram-card">
+          <div class="card-title">
+            <span>Гнучкий Менеджер RAM</span>
+            <span id="ram-burst-badge" class="badge" style="display:none; background:var(--md-error); color:#fff;">БУФЕР АКТИВНИЙ</span>
+          </div>
+          <div class="card-value" id="card-ram-val">0.0 MB</div>
+          <div class="ram-meter-track">
+            <div class="ram-meter-fill" id="card-ram-meter" style="width: 0%"></div>
+          </div>
+          <div class="ram-legend">
+            <span>База: <b id="card-ram-base">96</b> MB</span>
+            <span id="card-ram-percent">0%</span>
+            <span>Буфер: <b id="card-ram-burst">128</b> MB</span>
+          </div>
+        </div>
+
+        <!-- Plugins Metric -->
+        <div class="card">
+          <div class="card-title">
+            <span>Плагіни & Команди</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5s-1.12-2.5-2.5-2.5z"/></svg>
+          </div>
+          <div class="card-value" id="card-plugins-up">0 / 0</div>
+          <div class="card-subtext" id="card-commands-info">0 зареєстрованих команд</div>
+        </div>
+
+        <!-- Uptime & System -->
+        <div class="card">
+          <div class="card-title">
+            <span>Час роботи (Uptime)</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          </div>
+          <div class="card-value" id="card-uptime">0s</div>
+          <div class="card-subtext" id="card-sys-info">Go v1.2x • 0 goroutines</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 10px;">
+        <!-- Quick Message Sender -->
+        <div class="card">
+          <div class="card-title">
+            <span>Швидке повідомлення в Telegram</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </div>
+          <form id="form-quick-send">
+            <div class="form-group">
+              <label class="form-label">Отримувач (Peer)</label>
+              <input type="text" class="form-input" id="quick-send-peer" placeholder="@username, ID або 'me'" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Текст повідомлення</label>
+              <textarea class="form-textarea" id="quick-send-text" rows="2" placeholder="Введіть текст..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <span>Надіслати</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Quick Memory Tuning with MD3 Expressive Sliders -->
+        <div class="card">
+          <div class="card-title">
+            <span>Швидке налаштування RAM (MD3)</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+          </div>
+          <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:14px;">
+            Регулювання базового м'якого ліміту та аварійного буфера на льоту.
+          </p>
+
+          <!-- MD3 Base Slider -->
+          <div class="md3-slider-card">
+            <div class="md3-slider-meta">
+              <span class="md3-slider-title">Базовий ліміт RAM</span>
+              <span class="md3-slider-chip" id="quick-tune-base-chip">96 MB</span>
+            </div>
+            <div class="md3-slider-track-wrap">
+              <input type="range" class="md3-slider-input" id="quick-tune-base" min="32" max="1024" step="1" value="96">
+              <div class="md3-slider-ticks">
+                <span>32M</span><span>256M</span><span>512M</span><span>768M</span><span>1024M</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- MD3 Burst Slider -->
+          <div class="md3-slider-card">
+            <div class="md3-slider-meta">
+              <span class="md3-slider-title">Аварійний буфер</span>
+              <span class="md3-slider-chip" id="quick-tune-burst-chip">128 MB</span>
+            </div>
+            <div class="md3-slider-track-wrap">
+              <input type="range" class="md3-slider-input" id="quick-tune-burst" min="64" max="2048" step="1" value="128">
+              <div class="md3-slider-ticks">
+                <span>64M</span><span>512M</span><span>1024M</span><span>1536M</span><span>2048M</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-success" id="btn-quick-tune-save" style="width:100%;">
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+            <span>Застосувати ліміти RAM</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Plugins -->
+    <section class="tab-section" id="tab-plugins">
+      <!-- Per-Account Plugin Banner -->
+      <div class="plugin-account-banner" id="plugin-account-banner">
+        <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <span>Акаунт: <b id="plugin-account-title">Основний</b></span>
+        <span class="badge" id="plugin-account-stats-badge" style="margin-left:auto;">0 активних плагінів</span>
+      </div>
+
+      <div class="plugins-header-bar">
+        <div style="display:flex; align-items:center; gap:10px; flex:1; max-width:400px; position:relative;">
+          <input type="text" class="form-input" id="plugins-search" placeholder="Пошук плагінів за назвою чи правами..." style="padding-left:38px;">
+          <svg class="md-icon" style="position:absolute; left:12px; color:var(--md-text-tertiary);" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <button type="button" class="search-clear" id="plugins-search-clear" title="Очистити пошук" aria-label="Очистити пошук">
+            <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+        <div class="seg" id="plugins-filter" role="tablist" aria-label="Фільтр плагінів">
+          <button type="button" class="active" data-f="all">Усі <em>0</em></button>
+          <button type="button" data-f="running">Запущені <em>0</em></button>
+          <button type="button" data-f="stopped">Зупинені <em>0</em></button>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-primary" id="btn-open-install-modal">
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            <span>Встановити плагін</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Plugins Grid -->
+      <div class="cards-grid" id="plugins-container">
+        <!-- Rendered via JS -->
+      </div>
+      <p class="empty-note" id="plugins-empty" hidden>Немає плагінів із таким статусом.</p>
+    </section>
+
+    <!-- Tab 3: Console & Messages -->
+    <section class="tab-section" id="tab-console">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px;">
+        <!-- Command Runner -->
+        <div class="card">
+          <div class="card-title">
+            <span>Виконання команд юзербота</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Оберіть команду зі списку</label>
+            <select class="form-select" id="cmd-select">
+              <option value="">-- Оберіть зареєстровану команду --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Аргументи / Текст команди</label>
+            <input type="text" class="form-input" id="cmd-args" placeholder="Наприклад: привіт світ">
+          </div>
+          <button class="btn btn-primary" id="btn-run-cmd" style="width:100%;">
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+            <span>Виконати команду</span>
+          </button>
+          
+          <div style="margin-top:16px;">
+            <label class="form-label">Результат виконання</label>
+            <pre id="cmd-result" style="background:var(--md-surface-input); border:1px solid var(--md-border-subtle); border-radius:var(--radius-md); padding:12px; min-height:85px; font-family:var(--font-mono); font-size:12px; color:var(--md-text-primary); white-space:pre-wrap; word-break:break-all;">Очікування виклику...</pre>
+          </div>
+        </div>
+
+        <!-- Rich Send Message & Media -->
+        <div class="card">
+          <div class="card-title">
+            <span>Надіслати повідомлення / медіа-файл</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </div>
+          <form id="form-send-media">
+            <div class="form-group">
+              <label class="form-label">Отримувач (Peer)</label>
+              <input type="text" class="form-input" id="send-peer" placeholder="@username або chat ID" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Текст або підпис до медіа</label>
+              <textarea class="form-textarea" id="send-text" rows="2" placeholder="Текст повідомлення..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Прикріпити файл (стрімінг частинами по 512 KB без OOM)</label>
+              <input type="file" class="form-input" id="send-file-input">
+            </div>
+
+            <!-- MD3 Switches -->
+            <div class="form-group" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+              <label class="md3-switch">
+                <input type="checkbox" id="send-silent">
+                <span class="md3-switch-track"><span class="md3-switch-thumb"></span></span>
+                <span class="md3-switch-label">Без звуку (Silent Mode)</span>
+              </label>
+              <label class="md3-switch">
+                <input type="checkbox" id="send-nopreview">
+                <span class="md3-switch-track"><span class="md3-switch-thumb"></span></span>
+                <span class="md3-switch-label">Без передперегляду посилань</span>
+              </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="btn-send-msg" style="width:100%; margin-top:8px;">
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <span>Надіслати в Telegram</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 4: Profile & Dangerous Zone -->
+    <section class="tab-section" id="tab-profile">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+        <!-- Profile Form -->
+        <div class="card">
+          <div class="card-title">
+            <span>Редагування профілю Telegram</span>
+            <span class="badge" style="background:var(--md-error-container); color:var(--md-error);">Зона мутацій</span>
+          </div>
+          <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:16px;">
+            Зміна імені, прізвища, біографії та юзернейму вашого основного акаунту через MTProto API.
+          </p>
+          <form id="form-profile-edit">
+            <div class="form-group">
+              <label class="form-label">Ім'я (First Name)</label>
+              <input type="text" class="form-input" id="profile-first-name" placeholder="Ваше ім'я" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Прізвище (Last Name)</label>
+              <input type="text" class="form-input" id="profile-last-name" placeholder="Ваше прізвище">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Про себе / Біографія (макс. 70 символів)</label>
+              <textarea class="form-textarea" id="profile-about" maxlength="70" rows="2" placeholder="Коротко про себе..."></textarea>
+              <div class="form-help" style="display:flex; justify-content:space-between;">
+                <span>Відображається в Telegram профілі</span>
+                <span id="profile-about-counter" style="font-family:var(--font-mono); color:var(--md-primary); font-weight:700;">0 / 70</span>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="btn-save-profile" style="width:100%;">
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+              <span>Зберегти профіль</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Username & Avatar -->
+        <div style="display:flex; flex-direction:column; gap:18px;">
+          <!-- Username Card -->
+          <div class="card">
+            <div class="card-title">
+              <span>Зміна @username</span>
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+            </div>
+            <form id="form-username-edit">
+              <div class="form-group">
+                <label class="form-label">Новий юзернейм (без @)</label>
+                <div style="display:flex; gap:10px; align-items:center;">
+                  <span style="color:var(--md-primary); font-weight:800; font-size:16px;">@</span>
+                  <input type="text" class="form-input" id="profile-username" placeholder="новий_юзернейм" required>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width:100%;">
+                <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+                <span>Оновити юзернейм</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Avatar Card -->
+          <div class="card">
+            <div class="card-title">
+              <span>Оновлення аватара</span>
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+            </div>
+            <form id="form-avatar-upload">
+              <div class="form-group">
+                <label class="form-label">Оберіть нове фото профілю</label>
+                <input type="file" class="form-input" id="profile-avatar-file" accept="image/jpeg,image/png" required>
+              </div>
+              <button type="submit" class="btn btn-primary" id="btn-upload-avatar" style="width:100%;">
+                <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                <span>Встановити нове фото</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 5: Settings & RAM -->
+    <section class="tab-section" id="tab-settings">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+        <!-- Memory Guard Advanced -->
+        <div class="card">
+          <div class="card-title">
+            <span>Гнучке Керування Пам'яттю (MemGuard)</span>
+            <span class="badge" style="background:var(--md-primary-container); color:var(--md-primary);">Auto-burst</span>
+          </div>
+          <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:16px;">
+            Унікальний механізм для Termux та систем із лімітом оперативної пам'яті. Aurora тримає споживання на базовому рівні і тільки під час стрімінгу або піків відкриває аварійний буфер, запобігаючи аварійному закриттю процесу.
+          </p>
+
+          <form id="form-memory-tune">
+            <!-- Base Slider -->
+            <div class="md3-slider-card">
+              <div class="md3-slider-meta">
+                <span class="md3-slider-title">Базовий ліміт RAM (Soft Limit)</span>
+                <span class="md3-slider-chip" id="setting-base-chip">96 MB</span>
+              </div>
+              <div class="md3-slider-track-wrap">
+                <input type="range" class="md3-slider-input" id="setting-base-input" min="32" max="1024" step="1" value="96">
+                <div class="md3-slider-ticks">
+                  <span>32M</span><span>256M</span><span>512M</span><span>768M</span><span>1024M</span>
+                </div>
+              </div>
+              <div class="form-help">Цільове використання пам'яті в стані спокою.</div>
+            </div>
+
+            <!-- Burst Slider -->
+            <div class="md3-slider-card">
+              <div class="md3-slider-meta">
+                <span class="md3-slider-title">Аварійний буфер (Burst Ceiling)</span>
+                <span class="md3-slider-chip" id="setting-burst-chip">128 MB</span>
+              </div>
+              <div class="md3-slider-track-wrap">
+                <input type="range" class="md3-slider-input" id="setting-burst-input" min="64" max="4096" step="1" value="128">
+                <div class="md3-slider-ticks">
+                  <span>64M</span><span>1024M</span><span>2048M</span><span>3072M</span><span>4096M</span>
+                </div>
+              </div>
+              <div class="form-help">Максимальна межа під час завантаження великих файлів.</div>
+            </div>
+
+            <button type="submit" class="btn btn-success" style="width:100%; margin-top:8px;">
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+              <span>Зберегти ліміти RAM</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Telegram Connection & Web Settings -->
+        <div class="card">
+          <div class="card-title">
+            <span>Параметри Підключення та Веб-сервера</span>
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          </div>
+          <form id="form-sys-settings">
+            <div class="form-group">
+              <label class="form-label">Веб-хост (Listen Host)</label>
+              <input type="text" class="form-input" id="setting-web-host" placeholder="127.0.0.1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Веб-порт (Port)</label>
+              <input type="number" class="form-input" id="setting-web-port" placeholder="8420">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Токен доступу (Web Token)</label>
+              <input type="text" class="form-input" id="setting-web-token" placeholder="Залиште порожнім, якщо не змінюється">
+            </div>
+
+            <div class="form-group" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--md-border-subtle);">
+              <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Ключі Telegram API</span>
+                <span class="badge" id="setting-tg-badge" style="font-size:10px;">Стандартні (2040)</span>
+              </label>
+              <div class="form-help" style="margin-bottom:8px;">За замовчуванням використовуються публічні ключі. Якщо виникають помилки чи обмеження, вкажіть власні з my.telegram.org.</div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div>
+                  <input type="number" class="form-input" id="setting-tg-appid" placeholder="App ID (дефолт: 2040)">
+                </div>
+                <div>
+                  <input type="text" class="form-input" id="setting-tg-apphash" placeholder="App Hash (дефолт)">
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">
+              <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+              <span>Зберегти налаштування системи</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 6: Logs & Events -->
+    <section class="tab-section" id="tab-logs">
+      <div class="terminal-card">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="log-count" id="log-count" title="Кількість рядків у вікні">0 рядків</span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <!-- Filter buttons -->
+            <div style="display:flex; gap:4px;">
+              <button class="btn btn-sm active" data-log-filter="ALL">Усі</button>
+              <button class="btn btn-sm" data-log-filter="INFO">INFO</button>
+              <button class="btn btn-sm" data-log-filter="WARN">WARN</button>
+              <button class="btn btn-sm" data-log-filter="ERROR">ERROR</button>
+            </div>
+
+            <div style="position:relative; display:flex; align-items:center;">
+              <input type="text" id="log-search-input" class="form-input" style="width:150px; padding:6px 10px 6px 30px; font-size:11px;" placeholder="Пошук...">
+              <svg class="md-icon sm" style="position:absolute; left:8px; color:var(--md-text-tertiary);" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            </div>
+
+            <button class="btn btn-sm" id="btn-toggle-autoscroll" title="Автопрокрутка">
+              <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+              <span>Авто</span>
+            </button>
+            <button class="btn btn-sm" id="btn-clear-logs" title="Очистити вікно логів">
+              <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19.36 10.04l-7.4-7.4a2 2 0 0 0-2.82 0l-6.36 6.36a2 2 0 0 0 0 2.83l7.4 7.4a2 2 0 0 0 2.82 0l6.36-6.36a2 2 0 0 0 0-2.83zm-8.82 7.05l-6.36-6.36 6.36-6.36 6.36 6.36-6.36 6.36zM15 19l4.5 4.5 1.5-1.5L16.5 17.5 15 19z"/></svg>
+              <span>Очистити</span>
+            </button>
+            <button class="btn btn-sm" id="btn-download-logs" title="Завантажити логи">
+              <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              <span>Експорт</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="terminal-body" id="logs-terminal">
+          <!-- Live logs streaming via SSE -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span class="sync" id="sync-state"><span class="status-dot" id="sync-dot"></span><span id="sync-text">Очікування даних…</span></span>
+    <button type="button" class="link-btn" id="btn-footer-menu">Центр керування <kbd>Ctrl</kbd><kbd>K</kbd></button>
+  </footer>
+</div>
+
+<!-- Modal: Plugin Advisor & Audit -->
+<div class="modal-overlay" id="modal-advisor">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="advisor-modal-title">
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span>Аудит Безпеки та ШІ-Порадник</span>
+      </div>
+      <button class="modal-close" data-close-modal>
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="advisor-modal-body">
+      <!-- Injected by JS -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close-modal>Закрити</button>
+      <button class="btn btn-primary" id="btn-advisor-autofix" style="display:none;">
+        <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+        <span>Авто-налаштувати RAM</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Install Plugin -->
+<div class="modal-overlay" id="modal-install">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        <span>Встановлення нового плагіна</span>
+      </div>
+      <button class="modal-close" data-close-modal>
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="form-plugin-install">
+        <div class="form-group">
+          <label class="form-label">Джерело плагіна (Git URL або локальний шлях)</label>
+          <input type="text" class="form-input" id="install-source" placeholder="https://github.com/... або /path/to/plugin" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ім'я каталогу плагіна (необов'язково)</label>
+          <input type="text" class="form-input" id="install-name" placeholder="Залишіть порожнім для автовизначення">
+        </div>
+        <button type="submit" class="btn btn-primary" id="btn-submit-install" style="width:100%;">
+          <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          <span>Встановити та запустити</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Auth Login Wizard -->
+<div class="modal-overlay" id="modal-auth">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+        <span>Вхід у Telegram акаунт</span>
+      </div>
+      <button class="modal-close" data-close-modal>
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Step 1: Phone -->
+      <div id="auth-step-phone">
+        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть міжнародний номер телефону для отримання коду підтвердження:</p>
+        <form id="form-auth-phone">
+          <div class="form-group">
+            <input type="text" class="form-input" id="auth-phone-input" placeholder="+380991234567" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Отримати код</button>
+        </form>
+      </div>
+
+      <!-- Step 2: Code -->
+      <div id="auth-step-code" style="display:none;">
+        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть код підтвердження з додатку Telegram або SMS:</p>
+        <form id="form-auth-code">
+          <div class="form-group">
+            <input type="text" class="form-input" id="auth-code-input" placeholder="12345" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Підтвердити код</button>
+        </form>
+      </div>
+
+      <!-- Step 3: 2FA Password -->
+      <div id="auth-step-pwd" style="display:none;">
+        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть пароль двофакторної автентифікації (2FA Cloud Password):</p>
+        <form id="form-auth-pwd">
+          <div class="form-group">
+            <input type="password" class="form-input" id="auth-pwd-input" placeholder="Ваш 2FA пароль" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Увійти</button>
+        </form>
+      </div>
+
+      <!-- Import Session Alternative -->
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--md-border-subtle);">
+        <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:10px;">Або імпортуйте готову String Session (Telethon / Pyrogram):</p>
+        <form id="form-import-session">
+          <div class="form-group">
+            <input type="text" class="form-input" id="auth-session-input" placeholder="Вставте рядок сесії...">
+          </div>
+          <button type="submit" class="btn" style="width:100%;">Імпортувати сесію</button>
+        </form>
       </div>
     </div>
-  </section>
-</main>
+  </div>
+</div>
 
-<div id="toasts" class="toasts"></div>
+<!-- Modal: Add New Account -->
+<div class="modal-overlay" id="modal-account-add">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <span>Додати новий Telegram акаунт</span>
+      </div>
+      <button class="modal-close" data-close-modal>
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Step 1: Info & Phone -->
+      <div id="add-acc-step-phone">
+        <form id="form-add-account-phone">
+          <div class="form-group">
+            <label class="form-label">Назва акаунта (мітка)</label>
+            <input type="text" class="form-input" id="add-acc-title" placeholder="Наприклад: Робочий, Твінк, Мій бот" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Номер телефону</label>
+            <input type="text" class="form-input" id="add-acc-phone" placeholder="+380991234567" required>
+          </div>
+          <button type="submit" class="btn btn-primary" id="btn-submit-add-acc" style="width:100%;">
+            <span>Отримати код підтвердження</span>
+          </button>
+        </form>
+      </div>
 
-<dialog id="dlg-install">
-  <form method="dialog">
-    <h3>Встановити плагін</h3>
-    <p class="muted">Вставте git-URL репозиторію. Aurora зробить <code>git clone</code> у каталог плагінів.</p>
-    <input id="install-url" placeholder="https://github.com/user/aurora-plugin-x" autocomplete="off">
-    <label class="muted small">Ім’я (необов’язково)</label>
-    <input id="install-name" placeholder="auto — з aurora.plugin.json" autocomplete="off">
-    <menu>
-      <button value="cancel" class="ghost">Скасувати</button>
-      <button value="ok" id="install-ok" class="primary">Встановити</button>
-    </menu>
-  </form>
-</dialog>
+      <!-- Step 2: Code -->
+      <div id="add-acc-step-code" style="display:none;">
+        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть код підтвердження з додатку Telegram або SMS:</p>
+        <form id="form-add-account-code">
+          <div class="form-group">
+            <input type="text" class="form-input" id="add-acc-code-input" placeholder="12345" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Підтвердити код</button>
+        </form>
+      </div>
 
-<dialog id="dlg-session">
-  <form method="dialog">
-    <h3>Імпортувати сесію</h3>
-    <p class="muted">Вставте StringSession від Telethon/Pyrogram — авторизація перенесеться без SMS.</p>
-    <textarea id="session-str" rows="4" placeholder="1BVts..."></textarea>
-    <menu>
-      <button value="cancel" class="ghost">Скасувати</button>
-      <button value="ok" class="primary">Імпортувати</button>
-    </menu>
-  </form>
-</dialog>
+      <!-- Step 3: 2FA Password -->
+      <div id="add-acc-step-pwd" style="display:none;">
+        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть пароль двофакторної автентифікації (2FA Cloud Password):</p>
+        <form id="form-add-account-pwd">
+          <div class="form-group">
+            <input type="password" class="form-input" id="add-acc-pwd-input" placeholder="Ваш 2FA пароль" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Увійти</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 
-<footer class="foot">
-  <span>{{VERSION}}</span> · <span id="foot-build">{{BUILT}}</span> · <button id="foot-token" class="link">показати токен</button>
-</footer>
+<!-- Mobile Floating Action Button -->
+<button class="fab-control-menu" id="fab-control-menu" title="Центр управління">
+  <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+</button>
+
+<!-- Modal: Control Center Menu -->
+<div class="modal-overlay" id="modal-control-menu">
+  <div class="modal-box control-menu-box">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+        <span>Центр Управління Aurora</span>
+      </div>
+      <button class="modal-close" data-close-modal>
+        <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Search Input -->
+      <div class="control-search-wrap">
+        <span class="control-search-icon">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        </span>
+        <input type="text" class="control-search-input" id="control-search-input" placeholder="Швидкий пошук дії або розділу... (Esc для закриття)">
+      </div>
+
+      <!-- Eco Mode Banner -->
+      <div class="eco-active-banner" id="eco-active-banner" style="display:none;">
+        <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M16 4h-2V2h-4v2H8C7.45 4 7 4.45 7 5v14c0 .55.45 1 1 1h8c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zm-1 10h-2v2h-2v-2H9v-2h2v-2h2v2h2v2z"/></svg>
+        <span><b>Termux Eco-Mode активний:</b> Знижено навантаження на процесор та збереження заряду батареї.</span>
+      </div>
+
+      <!-- Actions Grid -->
+      <div class="control-section-header">Швидкі операції та перемикачі</div>
+      <div class="control-actions-grid" id="control-actions-grid">
+        <!-- Tile 1: Force GC -->
+        <div class="control-action-card" data-action="gc" data-keywords="gc рам пам'ять очистити ram memory free">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66z"/></svg>
+          </div>
+          <div class="control-action-title">Очистити пам'ять (GC)</div>
+          <div class="control-action-desc">Примусовий збір сміття в купі та скидання сторінок в ОС</div>
+        </div>
+
+        <!-- Tile 2: Stop All Plugins -->
+        <div class="control-action-card danger" data-action="stop-all-plugins" data-keywords="stop зупинити плагіни kill switch пауза вимкнути">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+          </div>
+          <div class="control-action-title">Аварійний Stop плагінів</div>
+          <div class="control-action-desc">Миттєво зупинити всі активні процеси плагінів</div>
+        </div>
+
+        <!-- Tile 3: Start All Plugins -->
+        <div class="control-action-card" data-action="start-all-plugins" data-keywords="start запуск плагіни увімкнути всі">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+          </div>
+          <div class="control-action-title">Запустити всі плагіни</div>
+          <div class="control-action-desc">Пакетний запуск усіх встановлених модулів</div>
+        </div>
+
+        <!-- Tile 4: Clear Cache -->
+        <div class="control-action-card" data-action="clear-cache" data-keywords="cache кеш файли очистити uploads диск медіа">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M19.36 10.04l-7.4-7.4a2 2 0 0 0-2.82 0l-6.36 6.36a2 2 0 0 0 0 2.83l7.4 7.4a2 2 0 0 0 2.82 0l6.36-6.36a2 2 0 0 0 0-2.83zm-8.82 7.05l-6.36-6.36 6.36-6.36 6.36 6.36-6.36 6.36zM15 19l4.5 4.5 1.5-1.5L16.5 17.5 15 19z"/></svg>
+          </div>
+          <div class="control-action-title">Очистити кеш медіа</div>
+          <div class="control-action-desc">Видалити тимчасові файли завантажень зі сховища</div>
+        </div>
+
+        <!-- Tile 5: Eco Mode -->
+        <div class="control-action-card" data-action="toggle-eco" data-keywords="eco батарея енергозбереження termux акумулятор економія">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M16 4h-2V2h-4v2H8C7.45 4 7 4.45 7 5v14c0 .55.45 1 1 1h8c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zm-1 10h-2v2h-2v-2H9v-2h2v-2h2v2h2v2z"/></svg>
+          </div>
+          <div class="control-action-title">Termux Eco-Mode</div>
+          <div class="control-action-desc">Оптимізація частоти опитувань для збереження заряду</div>
+        </div>
+
+        <!-- Tile 6: Ping Test -->
+        <div class="control-action-card" data-action="ping-test" data-keywords="ping пінг затримка мережа latency тест">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          </div>
+          <div class="control-action-title">Тест затримки (Ping)</div>
+          <div class="control-action-desc">Виміряти затримку зв'язку з ядром юзербота</div>
+        </div>
+
+        <!-- Tile 7: Copy Token -->
+        <div class="control-action-card" data-action="copy-token" data-keywords="token токен копіювати доступ ключ секрет">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          </div>
+          <div class="control-action-title">Скопіювати Web-токен</div>
+          <div class="control-action-desc">Скопіювати токен доступу в буфер обміну</div>
+        </div>
+
+        <!-- Tile 8: Backup Config -->
+        <div class="control-action-card" data-action="export-config" data-keywords="backup конфіг експорт зберегти config json">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+          </div>
+          <div class="control-action-title">Експорт конфігурації</div>
+          <div class="control-action-desc">Завантажити поточний файл config.json на пристрій</div>
+        </div>
+
+        <!-- Tile 9: Restart Core -->
+        <div class="control-action-card danger" data-action="restart-core" data-keywords="restart перезапуск перезавантаження перезапустити">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+          </div>
+          <div class="control-action-title">М'який перезапуск</div>
+          <div class="control-action-desc">Перезапустити ядро зі збереженням сесії Telegram</div>
+        </div>
+
+        <!-- Tile 10: Shutdown -->
+        <div class="control-action-card danger" data-action="shutdown-core" data-keywords="shutdown вимкнути зупинка stop вихід exit">
+          <div class="control-action-icon">
+            <svg class="md-icon lg" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
+          </div>
+          <div class="control-action-title">Вимкнення Aurora</div>
+          <div class="control-action-desc">Повне коректне завершення роботи процесу</div>
+        </div>
+      </div>
+
+      <!-- Quick Jumps -->
+      <div class="control-section-header">Швидка навігація по системі</div>
+      <div class="quick-jumps-row">
+        <div class="quick-jump-chip" data-jump="overview">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+          <span>Огляд та пам'ять</span>
+        </div>
+        <div class="quick-jump-chip" data-jump="plugins">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5s-1.12-2.5-2.5-2.5z"/></svg>
+          <span>Плагіни & Безпека</span>
+        </div>
+        <div class="quick-jump-chip" data-jump="console">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM8 14H6v-2h2v2zm0-3H6V9h2v2zm0-3H6V6h2v2zm7 6h-5v-2h5v2zm3-3h-8V9h8v2zm0-3h-8V6h8v2z"/></svg>
+          <span>Консоль команд</span>
+        </div>
+        <div class="quick-jump-chip" data-jump="profile">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          <span>Редактор профілю</span>
+        </div>
+        <div class="quick-jump-chip" data-jump="settings">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+          <span>Тюнінг Elastic RAM</span>
+        </div>
+        <div class="quick-jump-chip" data-jump="logs">
+          <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span>Живий стрім логів</span>
+        </div>
+      </div>
+
+      <div class="control-section-header">Гарячі клавіші</div>
+      <div class="hotkeys-row">
+        <span class="hotkey"><kbd>1</kbd>–<kbd>6</kbd> вкладки</span>
+        <span class="hotkey"><kbd>/</kbd> пошук</span>
+        <span class="hotkey"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> надіслати</span>
+        <span class="hotkey"><kbd>Ctrl</kbd>+<kbd>K</kbd> меню</span>
+        <span class="hotkey"><kbd>T</kbd> тема</span>
+        <span class="hotkey"><kbd>↑</kbd><kbd>↓</kbd><kbd>Enter</kbd> у меню</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Toasts -->
+<div class="toast-container" id="toast-container"></div>
 
 <script src="app.js"></script>
 </body>

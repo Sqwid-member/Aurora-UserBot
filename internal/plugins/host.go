@@ -160,6 +160,12 @@ func (h *Host) Uninstall(name string, removeFiles bool) error {
 	h.mu.Unlock()
 
 	if removeFiles {
+		cleanRoot := filepath.Clean(h.root)
+		cleanDir := filepath.Clean(inst.Dir)
+		rel, err := filepath.Rel(cleanRoot, cleanDir)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("refusing to remove directory outside plugin root: %s", inst.Dir)
+		}
 		return os.RemoveAll(inst.Dir)
 	}
 	return nil
@@ -316,6 +322,23 @@ func (h *Host) Emit(name string, data any) {
 	h.mu.RLock()
 	insts := make([]*Instance, 0, len(h.insts))
 	for _, inst := range h.insts {
+		insts = append(insts, inst)
+	}
+	h.mu.RUnlock()
+
+	for _, inst := range insts {
+		inst.Emit(name, data)
+	}
+}
+
+// EmitForAccount delivers an event only to plugins that are enabled for the given account.
+func (h *Host) EmitForAccount(accountID string, name string, data any, isEnabled func(accID, pluginName string) bool) {
+	h.mu.RLock()
+	insts := make([]*Instance, 0, len(h.insts))
+	for pluginName, inst := range h.insts {
+		if isEnabled != nil && !isEnabled(accountID, pluginName) {
+			continue
+		}
 		insts = append(insts, inst)
 	}
 	h.mu.RUnlock()

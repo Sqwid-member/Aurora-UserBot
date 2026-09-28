@@ -37,9 +37,62 @@ type Config struct {
 
 	// Plugins holds the plugin manager settings.
 	Plugins Plugins `json:"plugins"`
+
+	// Accounts holds multi-account configuration.
+	Accounts []AccountConfig `json:"accounts,omitempty"`
+
+	// ActiveAccount is the ID of the currently selected account in the UI.
+	ActiveAccount string `json:"active_account,omitempty"`
 }
 
 // Telegram holds Telegram-specific configuration.
+
+// AccountConfig holds configuration for an individual Telegram account.
+type AccountConfig struct {
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Phone          string   `json:"phone,omitempty"`
+	AppID          int      `json:"app_id,omitempty"`
+	AppHash        string   `json:"app_hash,omitempty"`
+	EnabledPlugins []string `json:"enabled_plugins,omitempty"`
+}
+
+// EffectiveAppID returns account-specific AppID or global/default AppID.
+func (a AccountConfig) EffectiveAppID(globalDefault int) int {
+	if a.AppID > 0 {
+		return a.AppID
+	}
+	if globalDefault > 0 {
+		return globalDefault
+	}
+	return DefaultAppID
+}
+
+// EffectiveAppHash returns account-specific AppHash or global/default AppHash.
+func (a AccountConfig) EffectiveAppHash(globalDefault string) string {
+	if h := strings.TrimSpace(a.AppHash); h != "" {
+		return h
+	}
+	if h := strings.TrimSpace(globalDefault); h != "" {
+		return h
+	}
+	return DefaultAppHash
+}
+
+// IsPluginEnabled reports whether a plugin is enabled for this account.
+// If EnabledPlugins is nil, all installed plugins are enabled by default.
+func (a AccountConfig) IsPluginEnabled(pluginName string) bool {
+	if a.EnabledPlugins == nil {
+		return true
+	}
+	for _, p := range a.EnabledPlugins {
+		if strings.EqualFold(p, pluginName) {
+			return true
+		}
+	}
+	return false
+}
+
 type Telegram struct {
 	// AppID and AppHash are required. Get them at https://my.telegram.org.
 	AppID   int    `json:"app_id"`
@@ -298,19 +351,66 @@ func (c *Config) normalize() {
 	if c.Plugins.Disabled == nil {
 		c.Plugins.Disabled = []string{}
 	}
+
+	if len(c.Accounts) == 0 {
+		c.Accounts = []AccountConfig{
+			{
+				ID:             "default",
+				Title:          "Основний акаунт",
+				Phone:          c.Telegram.Phone,
+				AppID:          c.Telegram.AppID,
+				AppHash:        c.Telegram.AppHash,
+				EnabledPlugins: nil,
+			},
+		}
+	}
+	if c.ActiveAccount == "" && len(c.Accounts) > 0 {
+		c.ActiveAccount = c.Accounts[0].ID
+	}
+	foundActive := false
+	for _, acc := range c.Accounts {
+		if acc.ID == c.ActiveAccount {
+			foundActive = true
+			break
+		}
+	}
+	if !foundActive && len(c.Accounts) > 0 {
+		c.ActiveAccount = c.Accounts[0].ID
+	}
+}
+
+const (
+	// DefaultAppID is the standard official Telegram Desktop client API ID.
+	DefaultAppID = 2040
+	// DefaultAppHash is the standard official Telegram Desktop client API hash.
+	DefaultAppHash = "b1844f235887e4c988483c31679563b1"
+)
+
+// EffectiveAppID returns the user-configured AppID or DefaultAppID if unset.
+func (c Config) EffectiveAppID() int {
+	if c.Telegram.AppID > 0 {
+		return c.Telegram.AppID
+	}
+	return DefaultAppID
+}
+
+// EffectiveAppHash returns the user-configured AppHash or DefaultAppHash if unset.
+func (c Config) EffectiveAppHash() string {
+	if h := strings.TrimSpace(c.Telegram.AppHash); h != "" {
+		return h
+	}
+	return DefaultAppHash
+}
+
+// UsingCustomAPIKeys reports whether the user configured their own Telegram credentials.
+func (c Config) UsingCustomAPIKeys() bool {
+	return c.Telegram.AppID > 0 && strings.TrimSpace(c.Telegram.AppHash) != ""
 }
 
 // Validate reports whether the config is ready to connect to Telegram.
 func (c Config) Validate() error {
-	var missing []string
-	if c.Telegram.AppID <= 0 {
-		missing = append(missing, "telegram.app_id")
-	}
-	if strings.TrimSpace(c.Telegram.AppHash) == "" {
-		missing = append(missing, "telegram.app_hash")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("missing required settings: %s", strings.Join(missing, ", "))
+	if c.EffectiveAppID() <= 0 || c.EffectiveAppHash() == "" {
+		return errors.New("missing required settings: telegram.app_id, telegram.app_hash")
 	}
 	return nil
 }
@@ -323,4 +423,59 @@ func (c Config) IsDisabled(name string) bool {
 		}
 	}
 	return false
+}
+
+// GetAccount finds an account by ID or returns the active account if id is empty.
+func (c Config) GetAccount(id string) (AccountConfig, bool) {
+	target := id
+	if target == "" {
+		target = c.ActiveAccount
+	}
+	for _, a := range c.Accounts {
+		if a.ID == target {
+			return a, true
+		}
+	}
+	if len(c.Accounts) > 0 {
+		return c.Accounts[0], true
+	}
+	return AccountConfig{ID: "default", Title: "Основний акаунт"}, false
+}
+
+// ToggleAccountPlugin toggles whether pluginName is enabled for account accID.
+func (c *Config) ToggleAccountPlugin(accID, pluginName string, allPlugins []string) (bool, error) {
+	for i := range c.Accounts {
+		if c.Accounts[i].ID == accID {
+			acc := &c.Accounts[i]
+			if acc.EnabledPlugins == nil {
+				// initialize with all except the one we are toggling off
+				var list []string
+				for _, p := range allPlugins {
+					if !strings.EqualFold(p, pluginName) {
+						list = append(list, p)
+					}
+				}
+				acc.EnabledPlugins = list
+				return false, nil
+			}
+
+			// check if present
+			idx := -1
+			for j, p := range acc.EnabledPlugins {
+				if strings.EqualFold(p, pluginName) {
+					idx = j
+					break
+				}
+			}
+			if idx >= 0 {
+				// remove
+				acc.EnabledPlugins = append(acc.EnabledPlugins[:idx], acc.EnabledPlugins[idx+1:]...)
+				return false, nil
+			}
+			// add
+			acc.EnabledPlugins = append(acc.EnabledPlugins, pluginName)
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("account %q not found", accID)
 }

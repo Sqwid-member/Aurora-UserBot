@@ -285,6 +285,13 @@ func (r *Runtime) RequestCode(ctx context.Context, phone string) error {
 // phone number is not registered on Telegram.
 var ErrLoginAborted = errors.New("tgc: login aborted")
 
+// Phone returns the configured phone number.
+func (r *Runtime) Phone() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.opts.Phone
+}
+
 // SetPhone updates the phone number used by the login flow.
 func (r *Runtime) SetPhone(phone string) {
 	r.mu.Lock()

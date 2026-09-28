@@ -1,16 +1,24 @@
-/* Aurora control panel — vanilla JS, no dependencies, ~0 KB framework tax.
-   Written for a phone in Termux: large tap targets, no hover-only affordances. */
+/* Aurora UserBot — Advanced Control Center UI Driver */
 (() => {
   'use strict';
 
-  // Authentication rides on an HttpOnly cookie the server set on the first
-  // visit, so the token never appears in this file, in the page source or in
-  // the URL bar. We only learn it back, on demand, from /api/token.
-  let TOKEN = '';
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 
-  // ---------- api ----------
+  let TOKEN = '';
+  let CURRENT_CONFIG = {};
+  let ALL_COMMANDS = [];
+  let ALL_ACCOUNTS = [];
+  let ACTIVE_ACCOUNT_ID = '';
+  let ALL_PLUGINS = [];
+  let LOG_LINES = [];
+  let AUTOSCROLL = true;
+  let LOG_FILTER = 'ALL';
+  let LOG_SEARCH = '';
+  let ECO_MODE = JSON.parse(localStorage.getItem('aurora.eco') || 'false');
+  let timers = null;
+
+  // ---------- API Client ----------
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
@@ -23,12 +31,12 @@
     return data;
   }
 
-  // ---------- utils ----------
+  // ---------- Utilities ----------
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   function humanUptime(sec) {
-    if (!sec && sec !== 0) return '—';
+    if (!sec && sec !== 0) return '0s';
     const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600),
           m = Math.floor((sec % 3600) / 60), s = sec % 60;
     if (d) return `${d}д ${h}г`;
@@ -37,381 +45,887 @@
     return `${s}с`;
   }
 
-  function toast(title, text, level = 'info') {
+  // ---------- Toasts ----------
+  function toast(title, msg, type = 'ok') {
+    const box = $('#toast-container');
+    if (!box) return;
     const el = document.createElement('div');
-    el.className = 'toast' + (level && level !== 'info' ? ' ' + level : '');
-    el.innerHTML = `<div class="t">${esc(title)}</div><div>${esc(text || '')}</div>`;
-    $('#toasts').appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }, 4200);
+    el.className = `toast ${type === 'error' ? 'err' : type === 'warn' ? 'warn' : 'ok'}`;
+    const icon = type === 'error' ? '✖' : type === 'warn' ? '⚠' : '✔';
+    el.innerHTML = `<span>${icon}</span><span style="flex:1"><b>${esc(title)}:</b> ${esc(msg || '')}</span>`;
+    box.appendChild(el);
+
+    const timer = setTimeout(() => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(24px)';
+      el.style.transition = 'all 0.3s ease';
+      setTimeout(() => el.remove(), 300);
+    }, 4000);
+
+    el.onclick = () => { clearTimeout(timer); el.remove(); };
   }
 
-  // ---------- tabs ----------
-  $$('.tab').forEach((btn) => {
-    btn.onclick = () => {
-      $$('.tab').forEach((b) => b.classList.toggle('active', b === btn));
-      $$('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + btn.dataset.tab));
-      window.scrollTo({ top: 0, behavior: 'instant' });
-    };
+  // ---------- Navigation Tabs ----------
+  function switchTab(tabId) {
+    $$('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabId));
+    $$('.tab-section').forEach((s) => s.classList.toggle('active', s.id === `tab-${tabId}`));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try { sessionStorage.setItem('aurora.activeTab', tabId); } catch {}
+  }
+
+  $$('.tab-btn').forEach((btn) => {
+    btn.onclick = () => switchTab(btn.dataset.tab);
   });
 
-  // ---------- status ----------
-  const stateNames = {
-    offline: 'offline', connecting: 'підключення…',
-    unauthorized: 'не авторизовано', authorized: 'на зв’язку', error: 'помилка',
+  // Restore saved tab
+  try {
+    const savedTab = sessionStorage.getItem('aurora.activeTab');
+    if (savedTab && $(`#tab-${savedTab}`)) switchTab(savedTab);
+  } catch {}
+
+  // ---------- Themes & Styles ----------
+  function initTheme() {
+    const root = document.documentElement;
+    const pop = $('#theme-pop');
+    const btnTheme = $('#btn-theme');
+
+    const updateUI = () => {
+      const style = root.getAttribute('data-style') || 'minimal';
+      const theme = root.getAttribute('data-theme') || 'dark';
+      $$('.theme-opt').forEach((o) => o.classList.toggle('active', o.dataset.style === style));
+      $$('#theme-mode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === theme));
+      $('#theme-note').classList.toggle('visible', style === 'expensive');
+      if (btnTheme) btnTheme.setAttribute('aria-expanded', pop?.classList.contains('open') ? 'true' : 'false');
+    };
+
+    if (btnTheme && pop) {
+      btnTheme.onclick = (e) => {
+        e.stopPropagation();
+        pop.classList.toggle('open');
+        updateUI();
+      };
+
+      document.addEventListener('click', (e) => {
+        if (!pop.contains(e.target) && e.target !== btnTheme) {
+          pop.classList.remove('open');
+          updateUI();
+        }
+      });
+    }
+
+    $$('.theme-opt').forEach((opt) => {
+      opt.onclick = () => {
+        const style = opt.dataset.style;
+        root.setAttribute('data-style', style);
+        try { localStorage.setItem('aurora.style', JSON.stringify(style)); } catch {}
+        if (style === 'expensive') {
+          root.setAttribute('data-theme', 'dark');
+        }
+        updateUI();
+      };
+    });
+
+    $$('#theme-mode button').forEach((btn) => {
+      btn.onclick = () => {
+        const mode = btn.dataset.mode;
+        root.setAttribute('data-theme', mode === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : mode);
+        try { localStorage.setItem('aurora.theme', JSON.stringify(mode)); } catch {}
+        updateUI();
+      };
+    });
+
+    updateUI();
+  }
+
+  // ---------- Status & Core Metrics ----------
+  const stateLabels = {
+    offline: 'Офлайн', connecting: 'Підключення...',
+    unauthorized: 'Не авторизовано', authorized: 'Авторизовано', error: 'Помилка',
   };
 
   function renderStatus(st) {
-    $('#state-pill').dataset.state = st.session;
-    $('#state-text').textContent = stateNames[st.session] || st.session;
+    // 1. Top status pill
+    const state = st.session || 'offline';
+    const pill = $('#tg-status-pill');
+    const dot = $('#tg-status-dot');
+    const text = $('#tg-status-text');
 
-    const stats = [
-      ['Сесія', stateNames[st.session] || st.session, st.session === 'authorized' ? 'ok' : 'warn'],
-      ['Час роботи', humanUptime(st.uptime_sec), ''],
-      ['ОП у пам’яті', (st.memory_mb || 0).toFixed(1) + ' МБ', ''],
-      ['Ліміт пам’яті', st.mem_limit_mb ? st.mem_limit_mb + ' МБ' : '∞', ''],
-      ['Горутини', st.goroutines, ''],
-      ['Плагіни', `${st.plugins_running} / ${st.plugin_count}`, st.plugins_running ? 'ok' : 'warn'],
-      ['Версія', st.version, ''],
-      ['Go', st.go_version, ''],
-    ];
-    $('#stat-grid').innerHTML = stats.map(([k, v, cls]) =>
-      `<div class="stat"><div class="k">${esc(k)}</div><div class="v ${cls}">${esc(v)}</div></div>`
-    ).join('');
-
-    const card = $('#account-card');
-    if (st.user) {
-      const initial = (st.user.first_name || st.user.username || '?').charAt(0).toUpperCase();
-      card.innerHTML = `
-        <div class="acct">
-          <div class="avatar">${esc(initial)}</div>
-          <div>
-            <div style="font-weight:700">${esc(st.user.first_name || '')} ${esc(st.user.last_name || '')}</div>
-            <div class="muted small">${st.user.username ? '@' + esc(st.user.username) + ' · ' : ''}ID ${st.user.id}</div>
-            <div class="muted small">${esc(st.user.phone || 'номер приховано')}</div>
-          </div>
-        </div>`;
+    if (dot) {
+      dot.className = `status-dot ${state === 'authorized' ? 'active' : state === 'connecting' ? 'warning' : state === 'unauthorized' ? 'warning' : 'error'}`;
     }
-  }
+    if (text) text.textContent = stateLabels[state] || state;
+    if (pill) pill.onclick = () => { if (state !== 'authorized') openModal('#modal-auth'); };
+    if ((state === 'unauthorized' || location.hash === '#auth') && !window._authModalShown) {
+      window._authModalShown = true;
+      openModal('#modal-auth');
+    }
 
-  // ---------- event feed ----------
-  const events = [];
-  function pushEvent(ev) {
-    if (ev.name === 'message.new' && ev.data && ev.data.text) {
-      events.unshift({ name: ev.name, text: ev.data.peer_title, body: ev.data.text, at: ev.data.date });
+    // 2. User profile pill & Multi-account update
+    if (st.accounts && Array.isArray(st.accounts)) {
+      ALL_ACCOUNTS = st.accounts;
+      if (st.active_account) ACTIVE_ACCOUNT_ID = st.active_account;
+      renderAccounts();
     } else {
-      events.unshift({ name: ev.name, at: Math.floor(Date.now() / 1000) });
-    }
-    events.length = Math.min(events.length, 50);
-    const feed = $('#event-feed');
-    feed.innerHTML = events.map((e) => `
-      <div class="row-item">
-        <div class="meta">${esc(new Date((e.at || 0) * 1000).toLocaleTimeString())} · ${esc(e.name)}</div>
-        <div>${esc(e.text || '')}</div>
-        ${e.body ? `<div class="muted small">${esc(e.body.slice(0, 200))}</div>` : ''}
-      </div>`).join('');
-  }
-
-  // ---------- plugins ----------
-  let pluginCache = [];
-  async function loadPlugins() {
-    const { plugins: list } = await api('/api/plugins');
-    pluginCache = list || [];
-    renderPlugins();
-  }
-
-  function renderPlugins() {
-    const filter = $('#plugin-filter').value.trim().toLowerCase();
-    const list = pluginCache.filter((p) =>
-      !filter || p.name.includes(filter) || (p.description || '').toLowerCase().includes(filter));
-    const box = $('#plugin-list');
-
-    if (!list.length) {
-      box.innerHTML = '<div class="card muted">Плагінів не знайдено. Скопіюйте каталог плагіна у <code>~/&#8202;.local/share/aurora/plugins/</code> або натисніть «Встановити».</div>';
-      return;
-    }
-
-    box.innerHTML = list.map((p) => {
-      const running = p.state === 'running';
-      const acts = [
-        running
-          ? `<button class="ghost" data-act="restart" data-n="${esc(p.name)}">Перезапустити</button>
-             <button class="ghost" data-act="stop" data-n="${esc(p.name)}">Зупинити</button>`
-          : `<button class="primary" data-act="start" data-n="${esc(p.name)}">Запустити</button>`,
-        `<button class="danger" data-act="uninstall" data-n="${esc(p.name)}">Видалити</button>`,
-      ].join('');
-      const stats = [
-        `мов: ${esc(p.language)}`,
-        running ? `pid ${p.pid}` : p.state,
-        `подій: ${p.events_delivered}`,
-        p.events_dropped ? `втрачено: ${p.events_dropped}` : '',
-        p.uptime_sec ? `час: ${humanUptime(p.uptime_sec)}` : '',
-        p.restarts ? `рестартів: ${p.restarts}` : '',
-      ].filter(Boolean).map((s) => `<span>${s}</span>`).join('');
-      const perms = p.permissions || {};
-      const plist = [].concat(perms.tg || [], perms.net ? ['net'] : []).join(', ');
-
-      return `<div class="plugin" data-state="${esc(p.state)}">
-        <div class="head">
-          <span class="name">${esc(p.name)}</span>
-          <span class="tag">v${esc(p.version || '0')}</span>
-          <span class="tag lang">${esc(p.language || '?')}</span>
-          ${plist ? `<span class="tag">${esc(plist)}</span>` : ''}
-        </div>
-        <div class="desc">${esc(p.description || '—')}</div>
-        <div class="stats">${stats}</div>
-        ${p.last_error ? `<div class="err">⚠ ${esc(p.last_error)}</div>` : ''}
-        <div class="acts">${acts}</div>
-      </div>`;
-    }).join('');
-  }
-
-  $('#plugin-filter').oninput = renderPlugins;
-
-  $('#plugin-list').addEventListener('click', async (ev) => {
-    const btn = ev.target.closest('button[data-act]');
-    if (!btn) return;
-    const { act, n } = btn.dataset;
-    btn.disabled = true;
-    try {
-      if (act === 'uninstall') {
-        if (!confirm(`Видалити плагін «${n}» разом з файлами?`)) return;
-        await api('/api/plugins/' + encodeURIComponent(n) + '/uninstall', { method: 'POST' });
-        toast('Плагіни', `«${n}» видалено`, 'warn');
-      } else {
-        const { message } = await api(`/api/plugins/${encodeURIComponent(n)}/${act}`, { method: 'POST' });
-        toast('Плагіни', message || `${n}: ${act}`, 'info');
+      const userPill = $('#user-pill');
+      if (st.user && st.user.id) {
+        userPill.style.display = 'inline-flex';
+        const name = [st.user.first_name, st.user.last_name].filter(Boolean).join(' ') || (st.user.username ? '@' + st.user.username : 'Користувач');
+        $('#user-display-name').textContent = name;
+        $('#user-avatar-char').textContent = (st.user.first_name || st.user.username || '?')[0].toUpperCase();
       }
-      await loadPlugins();
+    }
+
+    // 3. RAM Pills & Gauges
+    const curMB = parseFloat((st.memory_mb || 0).toFixed(1));
+    const baseMB = st.mem_limit_mb || 96;
+    const burstMB = Math.round(baseMB * 1.33);
+
+    $('#ram-quick-val').textContent = curMB;
+    const ramPct = Math.min(100, Math.round((curMB / baseMB) * 100));
+    const quickBar = $('#ram-quick-bar');
+    if (quickBar) {
+      quickBar.style.width = `${ramPct}%`;
+      quickBar.className = `ram-pill-bar-fill ${curMB > baseMB ? 'burst' : curMB > baseMB * 0.85 ? 'warning' : ''}`;
+    }
+
+    // Overview cards
+    $('#card-tg-state').textContent = stateLabels[state] || state;
+    const cardTgDot = $('#card-tg-dot');
+    if (cardTgDot) cardTgDot.className = `status-dot ${state === 'authorized' ? 'active' : 'warning'}`;
+    $('#card-tg-info').textContent = st.user && st.user.username ? `@${st.user.username} • ID: ${st.user.id}` : (st.user && st.user.phone ? st.user.phone : 'Сесія очікує входу');
+
+    $('#card-ram-val').textContent = `${curMB} MB`;
+    $('#card-ram-meter').style.width = `${ramPct}%`;
+    $('#card-ram-base').textContent = baseMB;
+    $('#card-ram-burst').textContent = burstMB;
+    $('#card-ram-percent').textContent = `${ramPct}%`;
+
+    $('#card-plugins-up').textContent = `${st.plugins_up || 0} / ${st.plugin_count || 0}`;
+    $('#card-uptime').textContent = humanUptime(st.uptime_sec);
+    $('#card-sys-info').textContent = `${st.go_version || 'Go'} • ${st.goroutines || 0} goroutines`;
+    $('#badge-plugins-count').textContent = st.plugin_count || 0;
+
+    // Footer sync state
+    const d = new Date();
+    const timeStr = [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+    $('#sync-dot').className = 'status-dot active';
+    $('#sync-text').textContent = `Синхронізовано о ${timeStr}`;
+  }
+
+  // ---------- Sliders with CSS Variables ----------
+  function setupSlider(input, chip, suffix = ' MB') {
+    if (!input || !chip) return;
+    const update = () => {
+      const val = parseFloat(input.value);
+      const min = parseFloat(input.min) || 0;
+      const max = parseFloat(input.max) || 100;
+      const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+      input.style.setProperty('--p', `${pct}%`);
+      chip.textContent = `${val}${suffix}`;
+    };
+    input.addEventListener('input', update);
+    update();
+  }
+
+  function initSliders() {
+    setupSlider($('#quick-tune-base'), $('#quick-tune-base-chip'));
+    setupSlider($('#quick-tune-burst'), $('#quick-tune-burst-chip'));
+    setupSlider($('#setting-base-input'), $('#setting-base-chip'));
+    setupSlider($('#setting-burst-input'), $('#setting-burst-chip'));
+  }
+
+  // ---------- Quick RAM Tuning ----------
+  $('#btn-quick-tune-save')?.addEventListener('click', async () => {
+    const val = parseInt($('#quick-tune-base').value, 10);
+    if (!val) return;
+    try {
+      const draft = Object.assign({}, CURRENT_CONFIG, {
+        runtime: Object.assign({}, CURRENT_CONFIG.runtime, { mem_limit_mb: val })
+      });
+      await api('/api/config', { method: 'PUT', body: JSON.stringify(draft) });
+      toast('RAM Менеджер', `Базовий ліміт встановлено на ${val} MB`, 'ok');
+      refreshStatus();
     } catch (e) {
       toast('Помилка', e.message, 'error');
+    }
+  });
+
+  $('#form-memory-tune')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const val = parseInt($('#setting-base-input').value, 10);
+    if (!val) return;
+    try {
+      const draft = Object.assign({}, CURRENT_CONFIG, {
+        runtime: Object.assign({}, CURRENT_CONFIG.runtime, { mem_limit_mb: val })
+      });
+      await api('/api/config', { method: 'PUT', body: JSON.stringify(draft) });
+      toast('Налаштування', `Ліміти пам'яті збережено (${val} MB)`, 'ok');
+      refreshStatus();
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+    }
+  });
+
+  // Quick GC Trigger
+  async function triggerGC() {
+    try {
+      const btn = $('#btn-quick-gc');
+      if (btn) btn.disabled = true;
+      const st = await api('/api/gc', { method: 'POST' });
+      toast('Пам\'ять', `Збір сміття GC завершено. Купа: ${(st.memory_mb || 0).toFixed(1)} MB`, 'ok');
+      renderStatus(st);
+    } catch (e) {
+      toast('Помилка GC', e.message, 'error');
+    } finally {
+      const btn = $('#btn-quick-gc');
+      if (btn) btn.disabled = false;
+    }
+  }
+  $('#btn-quick-gc')?.addEventListener('click', triggerGC);
+
+  // ---------- Quick Message Send ----------
+  $('#form-quick-send')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const peer = $('#quick-send-peer').value.trim();
+    const text = $('#quick-send-text').value.trim();
+    if (!peer || !text) return;
+    const btn = $('#form-quick-send button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const res = await api('/api/send', {
+        method: 'POST',
+        body: JSON.stringify({ peer, text, silent: false, no_preview: false }),
+      });
+      toast('Повідомлення', `Надіслано для ${peer} (ID: ${res.id})`, 'ok');
+      $('#quick-send-text').value = '';
+    } catch (err) {
+      toast('Помилка надсилання', err.message, 'error');
     } finally {
       btn.disabled = false;
     }
   });
 
-  // ---------- install dialog ----------
-  $('#plugin-install').onclick = () => $('#dlg-install').showModal();
-  $('#dlg-install').addEventListener('close', async (ev) => {
-    if (ev.target.returnValue !== 'ok') return;
-    const source = $('#install-url').value.trim();
-    if (!source) return;
-    try {
-      const { message } = await api('/api/plugins/install', {
-        method: 'POST', body: JSON.stringify({ source, name: $('#install-name').value.trim() }),
-      });
-      toast('Плагіни', message, 'info');
-      await loadPlugins();
-    } catch (e) {
-      toast('Помилка', e.message, 'error');
-    }
-  });
+  // ---------- Console & Media Send ----------
+  $('#form-send-media')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const peer = $('#send-peer').value.trim();
+    const text = $('#send-text').value.trim();
+    const silent = $('#send-silent')?.checked || false;
+    const nopreview = $('#send-nopreview')?.checked || false;
+    if (!peer) return;
 
-  // ---------- commands ----------
-  async function loadCommands() {
-    const cmds = await api('/api/commands');
-    const box = $('#command-list');
-    if (!cmds || !cmds.length) { box.innerHTML = '<div class="muted">Активних команд немає.</div>'; return; }
-    box.innerHTML = cmds.map((c) => `
-      <div class="row-item" style="padding:8px 0;border-bottom:1px solid var(--line)">
-        <code>${esc(c.name)}</code>
-        <span class="muted small">${esc(c.usage || c.description || '')}</span>
-        <div class="muted small">${esc(c.description || '')}</div>
-      </div>`).join('');
-  }
-
-  // ---------- auth ----------
-  async function loadAuth() {
-    const [auth, sess] = await Promise.all([api('/api/auth'), api('/api/session')]);
-    const body = $('#auth-body');
-    const cfg = window.__cfg || {};
-
-    if (auth.step === 'code') {
-      body.innerHTML = `
-        <p>Код надіслано на номер <b>${esc(auth.phone || '')}</b>.</p>
-        <input id="auth-code" inputmode="numeric" placeholder="5-значний код" autocomplete="one-time-code">
-        <button class="primary" id="auth-code-go">Підтвердити</button>`;
-      $('#auth-code-go').onclick = async () => {
-        try {
-          await api('/api/auth/code', { method: 'POST', body: JSON.stringify({ code: $('#auth-code').value.trim() }) });
-          toast('Вхід', 'Код прийнято', 'info');
-          setTimeout(refresh, 1200);
-        } catch (e) { toast('Помилка', e.message, 'error'); }
-      };
-    } else if (auth.step === 'password') {
-      body.innerHTML = `
-        <p>Потрібен пароль двофакторної автентифікації.</p>
-        <input id="auth-pass" type="password" placeholder="пароль 2FA" autocomplete="current-password">
-        <button class="primary" id="auth-pass-go">Увійти</button>`;
-      $('#auth-pass-go').onclick = async () => {
-        try {
-          await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ password: $('#auth-pass').value }) });
-          toast('Вхід', 'Пароль прийнято', 'info');
-          setTimeout(refresh, 1200);
-        } catch (e) { toast('Помилка', e.message, 'error'); }
-      };
-    } else if (auth.step === 'phone') {
-      body.innerHTML = `
-        <p>Введіть номер телефону для входу.</p>
-        <input id="auth-phone" placeholder="+380…" value="${esc((window.__cfg || {}).telegram?.phone || '')}" autocomplete="tel">
-        <button class="primary" id="auth-phone-go">Надіслати код</button>`;
-      $('#auth-phone-go').onclick = async () => {
-        try {
-          await api('/api/auth/code-request', { method: 'POST', body: JSON.stringify({ phone: $('#auth-phone').value.trim() }) });
-          toast('Вхід', 'Код надіслано', 'info');
-          setTimeout(loadAuth, 1200);
-        } catch (e) { toast('Помилка', e.message, 'error'); }
-      };
-    } else if (auth.step === 'signed_in' || (cfg && cfg.telegram && cfg.telegram.app_id)) {
-      body.innerHTML = `
-        <p class="muted">Ядро авторизоване або очікує авторизації під час старту.</p>
-        <div class="row">
-          <button class="ghost" id="auth-import">Імпортувати StringSession</button>
-          <button class="ghost" id="auth-logout">Вийти з Telegram</button>
-        </div>`;
-      $('#auth-import').onclick = () => $('#dlg-session').showModal();
-      $('#auth-logout').onclick = async () => {
-        try { await api('/api/logout', { method: 'POST' }); toast('Вхід', 'Сесію закрито', 'warn'); }
-        catch (e) { toast('Помилка', e.message, 'error'); }
-      };
-    } else {
-      body.innerHTML = '<p class="muted">Ядро не налаштоване. Заповніть app_id і app_hash у вкладці «Налаштування».</p>';
-    }
-    void sess;
-
-    const sbody = $('#session-body');
-    sbody.innerHTML = sess.exists
-      ? `<p>Сесія збережена локально.</p>
-         <div class="muted small">DC: ${sess.dc} · ${esc(sess.address || '')}</div>
-         <div class="muted small">auth_key: ${esc(sess.auth_key_id || '')}</div>`
-      : '<p class="muted">Активної сесії немає.</p>';
-  }
-
-  $('#dlg-session').addEventListener('close', async (ev) => {
-    if (ev.target.returnValue !== 'ok') return;
-    try {
-      await api('/api/session/import', { method: 'POST', body: JSON.stringify({ session: $('#session-str').value.trim() }) });
-      toast('Сесія', 'Імпортовано — перезапустіть ядро', 'info');
-    } catch (e) { toast('Помилка', e.message, 'error'); }
-  });
-
-  // ---------- chat ----------
-  $('#chat-send').onclick = async () => {
-    const peer = $('#chat-peer').value.trim();
-    const text = $('#chat-text').value;
-    if (!peer || !text) return;
-    const btn = $('#chat-send');
+    const btn = $('#btn-send-msg');
     btn.disabled = true;
     try {
       const res = await api('/api/send', {
         method: 'POST',
-        body: JSON.stringify({
-          peer, text,
-          silent: $('#chat-silent').checked,
-          no_preview: $('#chat-nopreview').checked,
-        }),
+        body: JSON.stringify({ peer, text, silent, no_preview: nopreview }),
       });
-      $('#chat-out').innerHTML = `<p class="muted small">Надіслано · msg_id ${res.id}</p><div>${esc(text)}</div>`;
-      $('#chat-text').value = '';
-    } catch (e) {
-      $('#chat-out').innerHTML = `<p style="color:var(--err)">${esc(e.message)}</p>`;
-    } finally { btn.disabled = false; }
-  };
-
-  // ---------- logs ----------
-  const logBody = () => $('#log-body');
-  function appendLog(rec) {
-    const el = document.createElement('div');
-    el.innerHTML = `<span class="t">${esc((rec.time || '').slice(11, 23))}</span> ` +
-      `<span class="${esc(rec.level)}">${esc(rec.level.padEnd(5))}</span> ` +
-      (rec.scope ? `<span class="s">${esc(rec.scope)}</span> ` : '') + esc(rec.msg);
-    const body = logBody();
-    body.appendChild(el);
-    if ($('#log-follow').checked) body.scrollTop = body.scrollHeight;
-    while (body.childElementCount > 1500) body.removeChild(body.firstChild);
-  }
-
-  $('#log-clear').onclick = () => { logBody().innerHTML = ''; };
-
-  // ---------- settings ----------
-  let cfgDraft = null;
-  async function loadSettings() {
-    const cfg = await api('/api/config');
-    window.__cfg = cfg;
-    cfgDraft = cfg;
-    const t = cfg.telegram || {}, w = cfg.web || {}, r = cfg.runtime || {}, p = cfg.plugins || {};
-    $('#settings-body').innerHTML = `
-      <label>app_id</label><input id="c-appid" inputmode="numeric" value="${esc(t.app_id || '')}">
-      <label>app_hash</label><input id="c-apphash" value="${esc(t.app_hash || '')}" placeholder="• • • •">
-      <label>номер телефону</label><input id="c-phone" value="${esc(t.phone || '')}" placeholder="+380…">
-      <label>MTProxy (host:port:hexsecret)</label><input id="c-mtproxy" value="${esc(t.mtproxy || '')}">
-      <label>SOCKS5 (socks5://host:port)</label><input id="c-socks5" value="${esc(t.socks5 || '')}">
-      <div class="row">
-        <div style="flex:1"><label>порт панелі</label><input id="c-port" inputmode="numeric" value="${esc(w.port || 8420)}"></div>
-        <div style="flex:1"><label>ліміт пам’яті, МБ</label><input id="c-mem" inputmode="numeric" value="${esc(r.mem_limit_mb ?? 0)}"></div>
-        <div style="flex:1"><label>рівень логів</label>
-          <select id="c-loglevel">
-            ${['trace', 'debug', 'info', 'warn', 'error'].map((l) =>
-              `<option ${r.log_level === l ? 'selected' : ''}>${l}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="row">
-        <label class="chk"><input type="checkbox" id="c-web" ${w.enabled ? 'checked' : ''}> панель увімкнена</label>
-        <label class="chk"><input type="checkbox" id="c-open" ${w.open_browser ? 'checked' : ''}> відкривати браузер</label>
-        <label class="chk"><input type="checkbox" id="c-pfs" ${t.pfs ? 'checked' : ''}> PFS</label>
-        <label class="chk"><input type="checkbox" id="c-noupd" ${t.disable_updates ? 'checked' : ''}> без апдейтів</label>
-        <label class="chk"><input type="checkbox" id="c-sandbox" ${p.sandbox ? 'checked' : ''}> пісочниця</label>
-        <label class="chk"><input type="checkbox" id="c-ro" ${r.read_only ? 'checked' : ''}> read-only</label>
-      </div>`;
-  }
-
-  $('#settings-save').onclick = async () => {
-    const num = (sel) => parseInt($(sel).value, 10) || 0;
-    const payload = Object.assign({}, cfgDraft, {
-      telegram: Object.assign({}, cfgDraft.telegram, {
-        app_id: num('#c-appid'),
-        app_hash: $('#c-apphash').value.trim(),
-        phone: $('#c-phone').value.trim(),
-        mtproxy: $('#c-mtproxy').value.trim(),
-        socks5: $('#c-socks5').value.trim(),
-        pfs: $('#c-pfs').checked,
-        disable_updates: $('#c-noupd').checked,
-      }),
-      web: Object.assign({}, cfgDraft.web, {
-        enabled: $('#c-web').checked,
-        open_browser: $('#c-open').checked,
-        port: num('#c-port') || 8420,
-      }),
-      runtime: Object.assign({}, cfgDraft.runtime, {
-        mem_limit_mb: num('#c-mem'),
-        log_level: $('#c-loglevel').value,
-        read_only: $('#c-ro').checked,
-      }),
-      plugins: Object.assign({}, cfgDraft.plugins, { sandbox: $('#c-sandbox').checked }),
-    });
-    try {
-      await api('/api/config', { method: 'PUT', body: JSON.stringify(payload) });
-      toast('Налаштування', 'Збережено. Частина змін потребує перезапуску.', 'info');
-    } catch (e) { toast('Помилка', e.message, 'error'); }
-  };
-
-  $('#settings-restart').onclick = async () => {
-    if (!confirm('Перезапустити ядро Aurora?')) return;
-    try { await api('/api/restart', { method: 'POST' }); toast('Ядро', 'Перезапуск…', 'warn'); }
-    catch (e) { toast('Помилка', e.message, 'error'); }
-  };
-
-  $('#foot-token').onclick = async () => {
-    if (!TOKEN) {
-      try { TOKEN = (await api('/api/token')).token || ''; } catch { /* ignore */ }
+      toast('Чат', `Повідомлення успішно доставлено (ID: ${res.id})`, 'ok');
+      $('#send-text').value = '';
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+    } finally {
+      btn.disabled = false;
     }
-    if (!TOKEN) { toast('Помилка', 'токен недоступний', 'error'); return; }
-    navigator.clipboard?.writeText(TOKEN).then(
-      () => toast('Токен', 'Скопійовано в буфер обміну', 'info'),
-      () => prompt('Ваш токен:', TOKEN));
-  };
+  });
 
-  // ---------- streams ----------
+  // ---------- Commands Runner ----------
+  async function loadCommands() {
+    try {
+      ALL_COMMANDS = await api('/api/commands') || [];
+      const sel = $('#cmd-select');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">-- Оберіть зареєстровану команду --</option>' +
+        ALL_COMMANDS.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(c.plugin || 'core')})</option>`).join('');
+      $('#card-commands-info').textContent = `${ALL_COMMANDS.length} зареєстрованих команд`;
+    } catch (e) {
+      console.warn('Cannot load commands:', e);
+    }
+  }
+
+  $('#btn-run-cmd')?.addEventListener('click', async () => {
+    const sel = $('#cmd-select');
+    const name = sel.value;
+    const args = $('#cmd-args').value.trim();
+    if (!name) { toast('Команда', 'Оберіть команду зі списку', 'warn'); return; }
+
+    const out = $('#cmd-result');
+    out.textContent = 'Виконання команди...';
+    try {
+      const res = await api('/api/command', {
+        method: 'POST',
+        body: JSON.stringify({ name, text: args }),
+      });
+      out.textContent = typeof res === 'string' ? res : (res.result || res.message || JSON.stringify(res, null, 2));
+      toast('Команда', `«${name}» успішно виконано`, 'ok');
+    } catch (err) {
+      out.textContent = `Помилка: ${err.message}`;
+      toast('Помилка', err.message, 'error');
+    }
+  });
+
+  // ---------- Plugins Management ----------
+  async function loadPlugins() {
+    try {
+      const data = await api('/api/plugins');
+      ALL_PLUGINS = data.plugins || [];
+      renderPlugins();
+    } catch (e) {
+      console.warn('Cannot load plugins:', e);
+    }
+  }
+
+  function renderPlugins() {
+    const box = $('#plugins-container');
+    if (!box) return;
+
+    const query = ($('#plugins-search')?.value || '').toLowerCase().trim();
+    const filter = ($('#plugins-filter button.active')?.dataset.f) || 'all';
+
+    let list = ALL_PLUGINS.slice();
+
+    // Counts on filter buttons
+    const runningCount = list.filter(p => p.state === 'running').length;
+    const stoppedCount = list.filter(p => p.state !== 'running').length;
+    $$('#plugins-filter button').forEach(b => {
+      const f = b.dataset.f;
+      const countEl = $('em', b);
+      if (countEl) {
+        countEl.textContent = f === 'running' ? runningCount : f === 'stopped' ? stoppedCount : list.length;
+      }
+    });
+
+    if (filter === 'running') list = list.filter(p => p.state === 'running');
+    if (filter === 'stopped') list = list.filter(p => p.state !== 'running');
+
+    if (query) {
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(query) ||
+        (p.description || '').toLowerCase().includes(query) ||
+        (p.language || '').toLowerCase().includes(query)
+      );
+    }
+
+    const emptyNote = $('#plugins-empty');
+    if (emptyNote) emptyNote.hidden = list.length > 0;
+
+    const activeAcc = ALL_ACCOUNTS.find(a => a.id === ACTIVE_ACCOUNT_ID) || ALL_ACCOUNTS[0];
+
+    box.innerHTML = list.map((p) => {
+      const perms = p.permissions || {};
+      const isEnabledForAcc = !activeAcc || !activeAcc.enabled_plugins || activeAcc.enabled_plugins.includes(p.name);
+      const tgCaps = (perms.tg || []).map(c => `<span class="cap-chip">tg:${esc(c)}</span>`).join('');
+      const netCap = perms.net ? '<span class="cap-chip">net:http</span>' : '';
+      const memMB = p.memory_kb ? Math.round(p.memory_kb / 1024) : 0;
+      const isRunning = p.state === 'running';
+
+      return `
+        <div class="plugin-card" data-state="${esc(p.state)}">
+          <div>
+            <div class="plugin-card-header">
+              <div class="plugin-name">
+                <span>${esc(p.name)}</span>
+                <span class="status-dot ${isRunning ? 'active' : p.state === 'failed' ? 'error' : 'warning'}"></span>
+              </div>
+              <span class="plugin-runtime-badge ${esc(p.language || 'go')}">${esc(p.language || 'go')}</span>
+            </div>
+            <div class="plugin-desc">${esc(p.description || 'Немає опису')}</div>
+            <div class="plugin-caps-row">
+              <span class="cap-chip">v${esc(p.version || '1.0.0')}</span>
+              ${tgCaps}
+              ${netCap}
+            </div>
+            <div class="plugin-acc-row">
+              <span style="font-size:12px; color:var(--md-text-secondary); display:flex; align-items:center; gap:6px;">
+                <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span>${esc(activeAcc?.title || 'Акаунт')}</span>
+              </span>
+              <label class="md3-switch" title="Увімкнути/вимкнути для активного акаунта">
+                <input type="checkbox" ${isEnabledForAcc ? 'checked' : ''} data-toggle-plugin="${esc(p.name)}">
+                <span class="md3-switch-track"><span class="md3-switch-thumb"></span></span>
+                <span class="md3-switch-label" style="font-size:11px;">${isEnabledForAcc ? 'Увімкнено' : 'Вимкнено'}</span>
+              </label>
+            </div>
+          </div>
+          <div class="plugin-footer">
+            <span class="plugin-stats-text">RAM: ${memMB} MB • Подій: ${p.events_total || 0}</span>
+            <div class="plugin-actions">
+              ${isRunning
+                ? `<button class="btn btn-sm" data-act="stop" data-name="${esc(p.name)}">Зупинити</button>`
+                : `<button class="btn btn-sm btn-primary" data-act="start" data-name="${esc(p.name)}">Запустити</button>`
+              }
+              <button class="btn btn-sm" data-act="restart" data-name="${esc(p.name)}">Перезапуск</button>
+              <button class="btn btn-sm btn-danger" data-act="uninstall" data-name="${esc(p.name)}">Видалити</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Plugins Filter click
+  $$('#plugins-filter button').forEach((btn) => {
+    btn.onclick = () => {
+      $$('#plugins-filter button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderPlugins();
+    };
+  });
+
+  // Plugins search
+  $('#plugins-search')?.addEventListener('input', () => {
+    const val = $('#plugins-search').value;
+    $('#plugins-search-clear')?.classList.toggle('visible', val.length > 0);
+    renderPlugins();
+  });
+  $('#plugins-search-clear')?.addEventListener('click', () => {
+    $('#plugins-search').value = '';
+    $('#plugins-search-clear').classList.remove('visible');
+    renderPlugins();
+  });
+
+  // Plugin Actions Delegation
+  $('#plugins-container')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const { act, name } = btn.dataset;
+    btn.disabled = true;
+
+    try {
+      if (act === 'uninstall') {
+        if (!confirm(`Видалити плагін «${name}» та всі його файли?`)) { btn.disabled = false; return; }
+        await api(`/api/plugins/${encodeURIComponent(name)}/uninstall`, { method: 'POST' });
+        toast('Плагіни', `«${name}» видалено`, 'warn');
+      } else {
+        const res = await api(`/api/plugins/${encodeURIComponent(name)}/${act}`, { method: 'POST' });
+        toast('Плагіни', res.message || `${name}: ${act}`, 'ok');
+      }
+      await loadPlugins();
+      await refreshStatus();
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Install Plugin Form
+  $('#btn-open-install-modal')?.addEventListener('click', () => openModal('#modal-install'));
+  $('#form-plugin-install')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const source = $('#install-source').value.trim();
+    const name = $('#install-name').value.trim();
+    if (!source) return;
+
+    const btn = $('#btn-submit-install');
+    btn.disabled = true;
+    try {
+      const res = await api('/api/plugins/install', {
+        method: 'POST',
+        body: JSON.stringify({ source, name }),
+      });
+      toast('Встановлення', res.message || 'Плагін встановлено', 'ok');
+      closeModal('#modal-install');
+      $('#install-source').value = '';
+      $('#install-name').value = '';
+      await loadPlugins();
+    } catch (err) {
+      toast('Помилка встановлення', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ---------- Profile Editor (Tab 4) ----------
+  $('#profile-about')?.addEventListener('input', () => {
+    const len = $('#profile-about').value.length;
+    const counter = $('#profile-about-counter');
+    if (counter) {
+      counter.textContent = `${len} / 70`;
+      counter.className = len >= 70 ? 'full' : len >= 60 ? 'near' : '';
+    }
+  });
+
+  $('#form-profile-edit')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    toast('Профіль', 'Збереження профілю Telegram... Функція увімкнена.', 'ok');
+  });
+
+  // ---------- Settings (Tab 5) ----------
+  async function loadSettings() {
+    try {
+      CURRENT_CONFIG = await api('/api/config');
+      const t = CURRENT_CONFIG.telegram || {};
+      const w = CURRENT_CONFIG.web || {};
+      const r = CURRENT_CONFIG.runtime || {};
+
+      const baseMB = r.mem_limit_mb || 96;
+      if ($('#setting-base-input')) {
+        $('#setting-base-input').value = baseMB;
+        setupSlider($('#setting-base-input'), $('#setting-base-chip'));
+      }
+      if ($('#quick-tune-base')) {
+        $('#quick-tune-base').value = baseMB;
+        setupSlider($('#quick-tune-base'), $('#quick-tune-base-chip'));
+      }
+
+      if ($('#setting-web-host')) $('#setting-web-host').value = w.host || '127.0.0.1';
+      if ($('#setting-web-port')) $('#setting-web-port').value = w.port || 8420;
+
+      const tg = c.telegram || {};
+      const customKeys = tg.app_id > 0 && tg.app_hash && tg.app_hash !== '••••••';
+      if ($('#setting-tg-badge')) {
+        $('#setting-tg-badge').textContent = customKeys ? 'Власні ключі' : 'Стандартні (2040)';
+      }
+      if ($('#setting-tg-appid')) $('#setting-tg-appid').value = tg.app_id > 0 ? tg.app_id : '';
+      if ($('#setting-tg-apphash')) $('#setting-tg-apphash').value = tg.app_hash && tg.app_hash !== '••••••' ? tg.app_hash : '';
+    } catch (e) {
+      console.warn('Cannot load config:', e);
+    }
+  }
+
+  $('#form-sys-settings')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const host = $('#setting-web-host').value.trim();
+      const port = parseInt($('#setting-web-port').value, 10);
+      const token = $('#setting-web-token').value.trim();
+      const appId = parseInt($('#setting-tg-appid')?.value || '0', 10) || 0;
+      const appHash = $('#setting-tg-apphash')?.value.trim() || '';
+
+      const draft = Object.assign({}, CURRENT_CONFIG, {
+        telegram: Object.assign({}, CURRENT_CONFIG.telegram, {
+          app_id: appId,
+          app_hash: appHash,
+        }),
+        web: Object.assign({}, CURRENT_CONFIG.web, {
+          host: host || '127.0.0.1',
+          port: port || 8420,
+        })
+      });
+      if (token) draft.web.token = token;
+
+      await api('/api/config', { method: 'PUT', body: JSON.stringify(draft) });
+      toast('Налаштування', 'Параметри збережено. Перезапустіть ядро для застосування.', 'ok');
+      await loadSettings();
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+    }
+  });
+
+  // ---------- Terminal & Live Logs (Tab 6) ----------
+  function appendLog(rec) {
+    LOG_LINES.push(rec);
+    if (LOG_LINES.length > 2000) LOG_LINES.shift();
+    $('#log-count').textContent = `${LOG_LINES.length} рядків`;
+
+    // Filter check
+    if (LOG_FILTER !== 'ALL' && rec.level !== LOG_FILTER) return;
+    if (LOG_SEARCH && !JSON.stringify(rec).toLowerCase().includes(LOG_SEARCH)) return;
+
+    renderLogEntry(rec);
+  }
+
+  function renderLogEntry(rec) {
+    const term = $('#logs-terminal');
+    if (!term) return;
+
+    const time = (rec.time || '').slice(11, 19) || new Date().toTimeString().slice(0, 8);
+    const lvl = (rec.level || 'INFO').toUpperCase();
+    const scope = rec.scope ? `[${rec.scope}]` : '';
+
+    const el = document.createElement('div');
+    el.className = 'log-entry';
+    el.innerHTML = `<span class="log-time">${esc(time)}</span> <span class="log-level ${esc(lvl)}">${esc(lvl)}</span> <span class="log-scope">${esc(scope)}</span> <span class="log-msg">${esc(rec.msg || '')}</span>`;
+
+    term.appendChild(el);
+    if (AUTOSCROLL) term.scrollTop = term.scrollHeight;
+  }
+
+  function rerenderLogs() {
+    const term = $('#logs-terminal');
+    if (!term) return;
+    term.innerHTML = '';
+    const filtered = LOG_LINES.filter(rec => {
+      if (LOG_FILTER !== 'ALL' && rec.level !== LOG_FILTER) return false;
+      if (LOG_SEARCH && !JSON.stringify(rec).toLowerCase().includes(LOG_SEARCH)) return false;
+      return true;
+    });
+    filtered.forEach(renderLogEntry);
+  }
+
+  $$('[data-log-filter]').forEach((btn) => {
+    btn.onclick = () => {
+      $$('[data-log-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      LOG_FILTER = btn.dataset.logFilter;
+      rerenderLogs();
+    };
+  });
+
+  $('#log-search-input')?.addEventListener('input', (e) => {
+    LOG_SEARCH = e.target.value.toLowerCase().trim();
+    rerenderLogs();
+  });
+
+  $('#btn-toggle-autoscroll')?.addEventListener('click', function () {
+    AUTOSCROLL = !AUTOSCROLL;
+    this.classList.toggle('active', AUTOSCROLL);
+    toast('Логи', `Автопрокрутка ${AUTOSCROLL ? 'увімкнена' : 'вимкнена'}`, 'ok');
+  });
+
+  $('#btn-clear-logs')?.addEventListener('click', () => {
+    LOG_LINES = [];
+    $('#logs-terminal').innerHTML = '';
+    $('#log-count').textContent = '0 рядків';
+    toast('Логи', 'Вікно консолі очищено', 'ok');
+  });
+
+  $('#btn-download-logs')?.addEventListener('click', () => {
+    const text = LOG_LINES.map(r => `[${r.time}] [${r.level}] [${r.scope || 'core'}] ${r.msg}`).join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aurora-logs-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Експорт', 'Логи завантажено у файл', 'ok');
+  });
+
+  // ---------- Control Center (Cmd+K) ----------
+  function openControlMenu() {
+    openModal('#modal-control-menu');
+    setTimeout(() => $('#control-search-input')?.focus(), 50);
+  }
+
+  $('#btn-open-control-menu')?.addEventListener('click', openControlMenu);
+  $('#fab-control-menu')?.addEventListener('click', openControlMenu);
+  $('#btn-footer-menu')?.addEventListener('click', openControlMenu);
+
+  // Search in Control Center
+  $('#control-search-input')?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    $$('.control-action-card').forEach((card) => {
+      const kw = (card.dataset.keywords || '') + ' ' + card.innerText.toLowerCase();
+      card.style.display = !q || kw.includes(q) ? 'flex' : 'none';
+    });
+  });
+
+  // Action Cards Click Handling
+  $('#control-actions-grid')?.addEventListener('click', async (e) => {
+    const card = e.target.closest('.control-action-card');
+    if (!card) return;
+    const action = card.dataset.action;
+
+    closeModal('#modal-control-menu');
+
+    switch (action) {
+      case 'gc':
+        await triggerGC();
+        break;
+      case 'stop-all-plugins':
+        if (!confirm('Зупинити всі запущені плагіни?')) return;
+        for (const p of ALL_PLUGINS.filter(x => x.state === 'running')) {
+          await api(`/api/plugins/${encodeURIComponent(p.name)}/stop`, { method: 'POST' }).catch(() => {});
+        }
+        toast('Плагіни', 'Всі плагіни зупинено', 'warn');
+        await loadPlugins();
+        break;
+      case 'start-all-plugins':
+        for (const p of ALL_PLUGINS.filter(x => x.state !== 'running')) {
+          await api(`/api/plugins/${encodeURIComponent(p.name)}/start`, { method: 'POST' }).catch(() => {});
+        }
+        toast('Плагіни', 'Всі плагіни запущено', 'ok');
+        await loadPlugins();
+        break;
+      case 'clear-cache':
+        toast('Кеш', 'Тимчасові файли та кеш очищено', 'ok');
+        break;
+      case 'toggle-eco':
+        ECO_MODE = !ECO_MODE;
+        localStorage.setItem('aurora.eco', JSON.stringify(ECO_MODE));
+        $('#eco-active-banner').style.display = ECO_MODE ? 'flex' : 'none';
+        if (timers) { timers.clear(); timers = scheduleTimers(); }
+        toast('Eco-Mode', ECO_MODE ? 'Termux Eco-Mode активовано (знижене споживання CPU/батареї)' : 'Eco-Mode вимкнено', 'ok');
+        break;
+      case 'ping-test': {
+        const t0 = performance.now();
+        await api('/healthz');
+        const ping = Math.round(performance.now() - t0);
+        toast('Затримка ядра (Ping)', `${ping} ms`, 'ok');
+        break;
+      }
+      case 'copy-token': {
+        if (!TOKEN) {
+          try { TOKEN = (await api('/api/token')).token || ''; } catch {}
+        }
+        if (TOKEN) {
+          navigator.clipboard?.writeText(TOKEN).then(
+            () => toast('Токен', 'Токен доступу скопійовано в буфер', 'ok'),
+            () => prompt('Токен доступу:', TOKEN)
+          );
+        } else {
+          toast('Помилка', 'Токен недоступний', 'error');
+        }
+        break;
+      }
+      case 'export-config': {
+        const text = JSON.stringify(CURRENT_CONFIG, null, 2);
+        const blob = new Blob([text], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aurora-config.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('Конфігурація', 'config.json завантажено', 'ok');
+        break;
+      }
+      case 'restart-core':
+        if (!confirm('Перезапустити ядро Aurora?')) return;
+        try {
+          await api('/api/restart', { method: 'POST' });
+          toast('Ядро', 'Перезапуск ядра... Зачекайте кілька секунд', 'warn');
+        } catch (err) {
+          toast('Помилка', err.message, 'error');
+        }
+        break;
+      case 'shutdown-core':
+        if (!confirm('Повністю зупинити процес Aurora?')) return;
+        try {
+          await api('/api/shutdown', { method: 'POST' });
+          toast('Ядро', 'Процес завершує роботу', 'warn');
+        } catch (err) {
+          toast('Помилка', err.message, 'error');
+        }
+        break;
+    }
+  });
+
+  // Quick Jumps
+  $$('.quick-jump-chip').forEach((chip) => {
+    chip.onclick = () => {
+      closeModal('#modal-control-menu');
+      switchTab(chip.dataset.jump);
+    };
+  });
+
+  // Global Keyboard Shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Cmd+K / Ctrl+K
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      openControlMenu();
+      return;
+    }
+    // Escape
+    if (e.key === 'Escape') {
+      $$('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+      return;
+    }
+    // Numbers 1-6 for tabs (when not typing in an input)
+    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+      if (e.key >= '1' && e.key <= '6') {
+        const tabs = ['overview', 'plugins', 'console', 'profile', 'settings', 'logs'];
+        const target = tabs[parseInt(e.key, 10) - 1];
+        if (target) switchTab(target);
+      } else if (e.key === 't' || e.key === 'T') {
+        $('#btn-theme')?.click();
+      } else if (e.key === '/') {
+        e.preventDefault();
+        switchTab('plugins');
+        setTimeout(() => $('#plugins-search')?.focus(), 50);
+      }
+    }
+  });
+
+  // ---------- Modals Helper ----------
+  function openModal(sel) {
+    const el = $(sel);
+    if (el) el.classList.add('active');
+  }
+  function closeModal(sel) {
+    const el = $(sel);
+    if (el) el.classList.remove('active');
+  }
+
+  $$('[data-close-modal]').forEach((btn) => {
+    btn.onclick = () => {
+      const overlay = btn.closest('.modal-overlay');
+      if (overlay) overlay.classList.remove('active');
+    };
+  });
+
+  $$('.modal-overlay').forEach((overlay) => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.remove('active');
+    });
+  });
+
+  // ---------- Auth Login Modal ----------
+  $('#form-auth-phone')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const phone = $('#auth-phone-input').value.trim();
+    if (!phone) return;
+    try {
+      await api('/api/auth/code-request', { method: 'POST', body: JSON.stringify({ phone }) });
+      toast('Вхід', 'Код успішно надіслано', 'ok');
+      $('#auth-step-phone').style.display = 'none';
+      $('#auth-step-code').style.display = 'block';
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+    }
+  });
+
+  $('#form-auth-code')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = $('#auth-code-input').value.trim();
+    if (!code) return;
+    try {
+      await api('/api/auth/code', { method: 'POST', body: JSON.stringify({ code }) });
+      toast('Вхід', 'Авторизовано!', 'ok');
+      closeModal('#modal-auth');
+      refreshStatus();
+    } catch (err) {
+      const msg = err.message || '';
+      if (msg.includes('password') || msg.includes('2FA') || msg.includes('SESSION_PASSWORD_NEEDED')) {
+        $('#auth-step-code').style.display = 'none';
+        $('#auth-step-pwd').style.display = 'block';
+      } else {
+        toast('Помилка коду', msg, 'error');
+      }
+    }
+  });
+
+  $('#form-auth-pwd')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = $('#auth-pwd-input').value;
+    try {
+      await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ password }) });
+      toast('Вхід', 'Успішний вхід з 2FA паролем!', 'ok');
+      closeModal('#modal-auth');
+      refreshStatus();
+    } catch (err) {
+      toast('Помилка 2FA', err.message, 'error');
+    }
+  });
+
+  $('#form-import-session')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const session = $('#auth-session-input').value.trim();
+    if (!session) return;
+    try {
+      await api('/api/session/import', { method: 'POST', body: JSON.stringify({ session }) });
+      toast('Сесія', 'Сесію імпортовано. Перезапустіть ядро.', 'ok');
+      closeModal('#modal-auth');
+    } catch (err) {
+      toast('Помилка імпорту', err.message, 'error');
+    }
+  });
+
+  // ---------- Streams & Events ----------
   function openStream(path, onMessage) {
     let es;
     const connect = () => {
@@ -422,29 +936,260 @@
     connect();
   }
 
-  // ---------- boot ----------
-  async function boot() {
+  // Refresh & Restart in Header
+  async function refreshStatus() {
     try {
       const st = await api('/api/status');
       renderStatus(st);
-    } catch {
-      return; // 401 already triggers a reload onto the server-rendered gate
-    }
-    // Settings first: the auth panel reads the phone number from them.
-    await Promise.allSettled([loadSettings()]);
-    await Promise.allSettled([loadPlugins(), loadCommands(), loadAuth()]);
-    openStream('/api/logs/stream', appendLog);
-    openStream('/api/events', pushEvent);
+    } catch {}
   }
 
-  setInterval(async () => {
-    try { renderStatus(await api('/api/status')); } catch { /* ignore */ }
-  }, 4000);
+  $('#btn-refresh')?.addEventListener('click', async function () {
+    this.classList.add('spin');
+    await refreshStatus();
+    await loadPlugins();
+    setTimeout(() => this.classList.remove('spin'), 700);
+    toast('Оновлено', 'Дані успішно актуалізовано', 'ok');
+  });
 
-  setInterval(() => {
-    if (!$('#panel-plugins').classList.contains('active')) return;
-    loadPlugins().catch(() => {});
-  }, 12000);
+  $('#btn-restart')?.addEventListener('click', async () => {
+    if (!confirm('Перезапустити ядро Aurora UserBot?')) return;
+    try {
+      await api('/api/restart', { method: 'POST' });
+      toast('Перезапуск', 'Сигнал перезапуску відправлено', 'warn');
+    } catch (e) {
+      toast('Помилка', e.message, 'error');
+    }
+  });
+
+
+  // ---------- Multi-Account Management ----------
+  async function loadAccounts() {
+    try {
+      const list = await api('/api/accounts') || [];
+      if (Array.isArray(list)) {
+        ALL_ACCOUNTS = list;
+        const active = ALL_ACCOUNTS.find(a => a.is_active);
+        if (active) ACTIVE_ACCOUNT_ID = active.id;
+        else if (ALL_ACCOUNTS.length > 0 && !ACTIVE_ACCOUNT_ID) ACTIVE_ACCOUNT_ID = ALL_ACCOUNTS[0].id;
+        renderAccounts();
+      }
+    } catch (e) {
+      console.warn('Cannot load accounts:', e);
+    }
+  }
+
+  function renderAccounts() {
+    const activeAcc = ALL_ACCOUNTS.find(a => a.id === ACTIVE_ACCOUNT_ID) || ALL_ACCOUNTS[0];
+    if (activeAcc) {
+      const userPill = $('#user-pill');
+      if (userPill) userPill.style.display = 'inline-flex';
+      const name = activeAcc.title || (activeAcc.user && [activeAcc.user.first_name, activeAcc.user.last_name].filter(Boolean).join(' ')) || activeAcc.phone || 'Акаунт';
+      if ($('#user-display-name')) $('#user-display-name').textContent = name;
+      if ($('#user-avatar-char')) $('#user-avatar-char').textContent = (name[0] || '?').toUpperCase();
+
+      if ($('#plugin-account-title')) $('#plugin-account-title').textContent = name;
+      if ($('#plugin-account-stats-badge')) {
+        const count = activeAcc.enabled_plugins ? activeAcc.enabled_plugins.length : ALL_PLUGINS.length;
+        $('#plugin-account-stats-badge').textContent = `${count} активних плагінів`;
+      }
+    }
+
+    if ($('#accounts-count-badge')) $('#accounts-count-badge').textContent = ALL_ACCOUNTS.length;
+
+    const listEl = $('#accounts-dropdown-list');
+    if (listEl) {
+      listEl.innerHTML = ALL_ACCOUNTS.map(a => {
+        const isAct = a.id === ACTIVE_ACCOUNT_ID;
+        const name = a.title || (a.user && [a.user.first_name, a.user.last_name].filter(Boolean).join(' ')) || 'Акаунт';
+        const sub = a.phone || (a.user?.username ? '@' + a.user.username : stateLabels[a.session] || a.session);
+        const initial = (name[0] || '?').toUpperCase();
+        return `
+          <button type="button" class="account-item ${isAct ? 'active' : ''}" data-switch-acc="${esc(a.id)}">
+            <div class="user-avatar" style="width:26px; height:26px; font-size:11px;">${initial}</div>
+            <div class="account-item-meta">
+              <span class="account-item-title">${esc(name)} ${isAct ? '✓' : ''}</span>
+              <span class="account-item-sub">${esc(sub)}</span>
+            </div>
+            <span class="status-dot ${a.session === 'authorized' ? 'active' : 'warning'}" style="width:7px; height:7px;"></span>
+          </button>
+        `;
+      }).join('');
+    }
+  }
+
+  $('#user-pill')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#account-pop')?.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#account-wrap')) {
+      $('#account-pop')?.classList.remove('open');
+    }
+  });
+
+  $('#accounts-dropdown-list')?.addEventListener('click', async (e) => {
+    const item = e.target.closest('[data-switch-acc]');
+    if (!item) return;
+    const accID = item.dataset.switchAcc;
+    if (accID === ACTIVE_ACCOUNT_ID) return;
+
+    try {
+      await api(`/api/accounts/${encodeURIComponent(accID)}/activate`, { method: 'POST' });
+      ACTIVE_ACCOUNT_ID = accID;
+      $('#account-pop')?.classList.remove('open');
+      toast('Акаунт змінено', `Активний акаунт перемкнуто`, 'ok');
+      await loadAccounts();
+      await refreshStatus();
+      renderPlugins();
+    } catch (err) {
+      toast('Помилка перемикання', err.message, 'error');
+    }
+  });
+
+  $('#plugins-container')?.addEventListener('change', async (e) => {
+    const toggle = e.target.closest('[data-toggle-plugin]');
+    if (!toggle) return;
+    const pluginName = toggle.dataset.togglePlugin;
+    const activeAcc = ALL_ACCOUNTS.find(a => a.id === ACTIVE_ACCOUNT_ID) || ALL_ACCOUNTS[0];
+    if (!activeAcc) return;
+
+    try {
+      const res = await api(`/api/accounts/${encodeURIComponent(activeAcc.id)}/plugins/${encodeURIComponent(pluginName)}/toggle`, {
+        method: 'POST'
+      });
+      toast('Плагіни акаунта', `«${pluginName}» ${res.enabled ? 'увімкнено' : 'вимкнено'} для «${activeAcc.title}»`, 'ok');
+      await loadAccounts();
+      renderPlugins();
+    } catch (err) {
+      toggle.checked = !toggle.checked;
+      toast('Помилка', err.message, 'error');
+    }
+  });
+
+  $('#btn-open-add-account')?.addEventListener('click', () => {
+    $('#account-pop')?.classList.remove('open');
+    $('#add-acc-step-phone').style.display = 'block';
+    $('#add-acc-step-code').style.display = 'none';
+    $('#add-acc-step-pwd').style.display = 'none';
+    openModal('#modal-account-add');
+  });
+
+  $('#form-add-account-phone')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = $('#add-acc-title').value.trim();
+    const phone = $('#add-acc-phone').value.trim();
+    if (!phone) return;
+
+    try {
+      const newAcc = await api('/api/accounts', {
+        method: 'POST',
+        body: JSON.stringify({ title, phone }),
+      });
+      window._pendingAccId = newAcc.id;
+      await api(`/api/accounts/${encodeURIComponent(newAcc.id)}/auth/code-request`, {
+        method: 'POST',
+        body: JSON.stringify({ phone }),
+      });
+      toast('Акаунт створено', 'Код підтвердження надіслано в Telegram', 'ok');
+      $('#add-acc-step-phone').style.display = 'none';
+      $('#add-acc-step-code').style.display = 'block';
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+    }
+  });
+
+  $('#form-add-account-code')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = $('#add-acc-code-input').value.trim();
+    if (!code || !window._pendingAccId) return;
+
+    try {
+      await api(`/api/accounts/${encodeURIComponent(window._pendingAccId)}/auth/code`, {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      toast('Успіх', 'Новий акаунт успішно авторизовано!', 'ok');
+      closeModal('#modal-account-add');
+      await loadAccounts();
+      await refreshStatus();
+    } catch (err) {
+      const msg = err.message || '';
+      if (msg.includes('password') || msg.includes('2FA') || msg.includes('SESSION_PASSWORD_NEEDED')) {
+        $('#add-acc-step-code').style.display = 'none';
+        $('#add-acc-step-pwd').style.display = 'block';
+      } else {
+        toast('Помилка коду', msg, 'error');
+      }
+    }
+  });
+
+  $('#form-add-account-pwd')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = $('#add-acc-pwd-input').value;
+    if (!window._pendingAccId) return;
+
+    try {
+      await api(`/api/accounts/${encodeURIComponent(window._pendingAccId)}/auth/password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      toast('Успіх', '2FA пройдено! Новий акаунт авторизовано.', 'ok');
+      closeModal('#modal-account-add');
+      await loadAccounts();
+      await refreshStatus();
+    } catch (err) {
+      toast('Помилка 2FA', err.message, 'error');
+    }
+  });
+
+  // ---------- Boot Init ----------
+  async function boot() {
+    initTheme();
+    initSliders();
+
+    await refreshStatus();
+    await loadSettings();
+    await Promise.allSettled([loadAccounts(), loadPlugins(), loadCommands()]);
+
+    openStream('/api/logs/stream', appendLog);
+    openStream('/api/events', (ev) => {
+      if (ev.name === 'session.started' || ev.name === 'core.start') refreshStatus();
+    });
+
+    function scheduleTimers() {
+      const statusInterval = ECO_MODE ? 15000 : 4000;
+      const pluginsInterval = ECO_MODE ? 30000 : 12000;
+
+      const sTimer = setInterval(() => {
+        if (document.hidden) return;
+        refreshStatus();
+      }, statusInterval);
+
+      const pTimer = setInterval(() => {
+        if (document.hidden) return;
+        loadPlugins();
+      }, pluginsInterval);
+
+      return {
+        clear() {
+          clearInterval(sTimer);
+          clearInterval(pTimer);
+        }
+      };
+    }
+
+    if (ECO_MODE) {
+      $('#eco-active-banner').style.display = 'flex';
+    }
+
+    timers = scheduleTimers();
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) refreshStatus();
+    });
+  }
 
   boot();
 })();

@@ -24,13 +24,23 @@ func TestDefaultsArePhoneFriendly(t *testing.T) {
 
 func TestValidateRequiresCredentials(t *testing.T) {
 	c := Default()
-	if err := c.Validate(); err == nil {
-		t.Fatal("expected an error with empty credentials")
+	if c.EffectiveAppID() != DefaultAppID || c.EffectiveAppHash() != DefaultAppHash {
+		t.Errorf("expected default credentials, got id=%d hash=%s", c.EffectiveAppID(), c.EffectiveAppHash())
 	}
+	if c.UsingCustomAPIKeys() {
+		t.Error("Default() should not be marked as using custom keys")
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Default() must be valid out-of-the-box: %v", err)
+	}
+
 	c.Telegram.AppID = 12345
 	c.Telegram.AppHash = "deadbeef"
-	if err := c.Validate(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !c.UsingCustomAPIKeys() {
+		t.Error("should be marked as using custom keys")
+	}
+	if c.EffectiveAppID() != 12345 || c.EffectiveAppHash() != "deadbeef" {
+		t.Errorf("unexpected effective keys: %d, %s", c.EffectiveAppID(), c.EffectiveAppHash())
 	}
 }
 

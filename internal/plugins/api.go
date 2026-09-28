@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -296,7 +297,65 @@ func toRaw(v any) json.RawMessage {
 	return b
 }
 
-// doHTTP performs a bounded outbound request on behalf of a plugin.
+func isBlockedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		if ip4[0] == 127 || ip4[0] == 0 || (ip4[0] == 169 && ip4[1] == 254) {
+			return true
+		}
+	}
+	return false
+}
+
+func newSafeHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+			if err != nil {
+				return nil, err
+			}
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("no IP addresses resolved for host %q", host)
+			}
+			var chosenIP net.IP
+			for _, ip := range ips {
+				if isBlockedIP(ip) {
+					return nil, fmt.Errorf("ssrf blocked: access to address %s is prohibited", ip.String())
+				}
+				if chosenIP == nil {
+					chosenIP = ip
+				}
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(chosenIP.String(), port))
+		},
+		MaxIdleConns:          16,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
+}
+
+// doHTTP performs a bounded outbound request on behalf of a plugin with SSRF protection.
 func doHTTP(ctx context.Context, req proto.HTTPRequest) (any, *ipc.Error) {
 	u, err := url.Parse(req.URL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
@@ -304,6 +363,9 @@ func doHTTP(ctx context.Context, req proto.HTTPRequest) (any, *ipc.Error) {
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, ipc.NewError(ipc.CodeForbidden, "only http and https are allowed")
+	}
+	if strings.EqualFold(u.Hostname(), "localhost") {
+		return nil, ipc.NewError(ipc.CodeForbidden, "ssrf blocked: access to localhost is prohibited")
 	}
 	timeout := time.Duration(req.Timeout) * time.Second
 	if timeout <= 0 || timeout > 30*time.Second {
@@ -327,7 +389,8 @@ func doHTTP(ctx context.Context, req proto.HTTPRequest) (any, *ipc.Error) {
 	for k, v := range req.Headers {
 		hreq.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(hreq)
+	client := newSafeHTTPClient(timeout)
+	resp, err := client.Do(hreq)
 	if err != nil {
 		return nil, ipc.NewError(ipc.CodeInternalError, "%v", err)
 	}

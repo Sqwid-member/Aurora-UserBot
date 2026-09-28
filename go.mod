@@ -47,3 +47,22 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
+
+replace (
+	go.opentelemetry.io/otel => github.com/open-telemetry/opentelemetry-go v1.44.0
+	go.opentelemetry.io/otel/metric => github.com/open-telemetry/opentelemetry-go/metric v1.44.0
+	go.opentelemetry.io/otel/trace => github.com/open-telemetry/opentelemetry-go/trace v1.44.0
+	go.uber.org/atomic => github.com/uber-go/atomic v1.11.0
+	go.uber.org/multierr => github.com/uber-go/multierr v1.11.0
+	go.uber.org/zap => github.com/uber-go/zap v1.28.0
+	golang.org/x/crypto => github.com/golang/crypto v0.54.0
+	golang.org/x/exp => github.com/golang/exp v0.0.0-20230725093048-515e97ebf090
+	golang.org/x/mod => github.com/golang/mod v0.38.0
+	golang.org/x/net => github.com/golang/net v0.57.0
+	golang.org/x/sync => github.com/golang/sync v0.22.0
+	golang.org/x/sys => github.com/golang/sys v0.48.0
+	golang.org/x/text => github.com/golang/text v0.40.0
+	golang.org/x/tools => github.com/golang/tools v0.48.0
+	gopkg.in/yaml.v2 => github.com/go-yaml/yaml v0.0.0-20201117154620-7649d4548cb5
+	rsc.io/qr => github.com/rsc/qr v0.2.0
+)

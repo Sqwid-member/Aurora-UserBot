@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -37,6 +38,14 @@ type Backend interface {
 	Config() config.Config
 	SaveConfig(config.Config) error
 
+	// Multi-account management
+	Accounts() []proto.AccountInfo
+	ActiveAccountID() string
+	SetActiveAccount(id string) error
+	AddAccount(title, phone string, appID int, appHash string) (proto.AccountInfo, error)
+	RemoveAccount(id string) error
+	ToggleAccountPlugin(accID, pluginName string) (bool, error)
+
 	// PluginStats returns a snapshot of every installed plugin.
 	PluginStats() []plugins.Stats
 	PluginAction(ctx context.Context, name, action string) (string, error)
@@ -48,12 +57,19 @@ type Backend interface {
 	Send(ctx context.Context, req proto.SendRequest) (proto.SendResult, error)
 
 	Auth() AuthState
+	AuthForAccount(accID string) AuthState
 	RequestCode(ctx context.Context, phone string) error
+	RequestCodeForAccount(ctx context.Context, accID string, phone string) error
 	SubmitCode(code string) error
+	SubmitCodeForAccount(accID string, code string) error
 	SubmitPassword(password string) error
+	SubmitPasswordForAccount(accID string, password string) error
 	Session() proto.SessionInfo
+	SessionForAccount(accID string) proto.SessionInfo
 	ImportSession(session string) error
+	ImportSessionForAccount(accID string, session string) error
 	Logout(ctx context.Context) error
+	LogoutForAccount(ctx context.Context, accID string) error
 
 	LogTail(n int) []logx.Record
 	SubscribeLogs() (<-chan logx.Record, func())
@@ -153,6 +169,17 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/token", s.handleToken)
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
+
+	mux.HandleFunc("GET /api/accounts", s.handleAccounts)
+	mux.HandleFunc("POST /api/accounts", s.handleCreateAccount)
+	mux.HandleFunc("POST /api/accounts/{id}/activate", s.handleActivateAccount)
+	mux.HandleFunc("DELETE /api/accounts/{id}", s.handleDeleteAccount)
+	mux.HandleFunc("POST /api/accounts/{id}/plugins/{name}/toggle", s.handleToggleAccountPlugin)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/code-request", s.handleAccountCodeRequest)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/code", s.handleAccountCode)
+	mux.HandleFunc("POST /api/accounts/{id}/auth/password", s.handleAccountPassword)
+	mux.HandleFunc("POST /api/accounts/{id}/session/import", s.handleAccountSessionImport)
+	mux.HandleFunc("POST /api/accounts/{id}/logout", s.handleAccountLogout)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	mux.HandleFunc("POST /api/config", s.handlePutConfig)
 
@@ -178,6 +205,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/shutdown", s.handleShutdown)
 	mux.HandleFunc("POST /api/restart", s.handleShutdown)
+	mux.HandleFunc("POST /api/gc", s.handleGC)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -186,18 +214,70 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.Handle("/", staticHandler())
 }
 
-// middleware enforces the bearer token and injects the CORS-free headers the
-// panel needs.
+func (s *Server) isAllowedHost(hostPort string) bool {
+	if s.opts.Host == "0.0.0.0" || s.opts.Host == "::" {
+		return true
+	}
+	host := hostPort
+	if h, _, err := net.SplitHostPort(hostPort); err == nil {
+		host = h
+	}
+	host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	if host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "" {
+		return true
+	}
+	if s.opts.Host != "" && (host == s.opts.Host || strings.EqualFold(host, s.opts.Host)) {
+		return true
+	}
+	return false
+}
+
+func (s *Server) isCrossSite(r *http.Request) bool {
+	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" {
+		if sfs == "cross-site" {
+			return true
+		}
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil {
+			return true
+		}
+		if !s.isAllowedHost(u.Host) {
+			return true
+		}
+	}
+	return false
+}
+
+// middleware enforces security headers, Host validation (DNS rebinding protection),
+// CSRF protection for mutating verbs and token authentication.
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+
 		if r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
 			return
 		}
+
+		if !s.isAllowedHost(r.Host) {
+			http.Error(w, "invalid host header", http.StatusBadRequest)
+			return
+		}
+
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+			if s.isCrossSite(r) {
+				http.Error(w, "cross-site request forbidden", http.StatusForbidden)
+				return
+			}
+		}
+
 		switch s.authState(r) {
 		case authOK:
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.Header().Set("Referrer-Policy", "no-referrer")
 			next.ServeHTTP(w, r)
 		case authNeedCookie:
 			// A correct ?token= was supplied: move it into an HttpOnly cookie
@@ -584,6 +664,11 @@ func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleGC(w http.ResponseWriter, r *http.Request) {
+	runtime.GC()
+	writeJSON(w, http.StatusOK, s.opts.Backend.Status())
+}
+
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if s.opts.ReadOnly {
 		writeErr(w, http.StatusForbidden, "core is in read-only mode")
@@ -642,4 +727,141 @@ func openBrowser(url string) {
 func isTermux() bool {
 	_, err := exec.LookPath("termux-open-url")
 	return err == nil
+}
+
+func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.opts.Backend.Accounts())
+}
+
+func (s *Server) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	var req struct {
+		Title   string `json:"title"`
+		Phone   string `json:"phone"`
+		AppID   int    `json:"app_id"`
+		AppHash string `json:"app_hash"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	acc, err := s.opts.Backend.AddAccount(req.Title, req.Phone, req.AppID, req.AppHash)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, acc)
+}
+
+func (s *Server) handleActivateAccount(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.opts.Backend.SetActiveAccount(id); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active_account": id})
+}
+
+func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.opts.Backend.RemoveAccount(id); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleToggleAccountPlugin(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	id := r.PathValue("id")
+	name := r.PathValue("name")
+	enabled, err := s.opts.Backend.ToggleAccountPlugin(id, name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": enabled, "account_id": id, "plugin": name})
+}
+
+func (s *Server) handleAccountCodeRequest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Phone string `json:"phone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.opts.Backend.RequestCodeForAccount(r.Context(), id, req.Phone); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAccountCode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.opts.Backend.SubmitCodeForAccount(id, req.Code); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.opts.Backend.SubmitPasswordForAccount(id, req.Password); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAccountSessionImport(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Session string `json:"session"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.opts.Backend.ImportSessionForAccount(id, req.Session); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAccountLogout(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.opts.Backend.LogoutForAccount(r.Context(), id); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

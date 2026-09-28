@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -33,6 +35,14 @@ import (
 )
 
 // App is the assembled Aurora core.
+type accountRuntime struct {
+	id     string
+	title  string
+	phone  string
+	tg     *tgc.Runtime
+	cancel context.CancelFunc
+}
+
 type App struct {
 	Paths   paths.Layout
 	Cfg     *config.Store
@@ -49,6 +59,10 @@ type App struct {
 	eventSubs   map[uint64]chan proto.Event
 	nextSub     uint64
 	notifyQueue []proto.Event
+
+	accountsMu sync.RWMutex
+	accounts   map[string]*accountRuntime
+	activeAcc  string
 
 	shutdownOnce sync.Once
 	stopFn       context.CancelFunc
@@ -98,9 +112,23 @@ func New(layout paths.Layout, level logx.Level, color bool, quiet bool) (*App, e
 		logSubs:   map[uint64]chan logx.Record{},
 		eventSubs: map[uint64]chan proto.Event{},
 		stopped:   make(chan struct{}),
+		accounts:  make(map[string]*accountRuntime),
 	}
 
-	a.TG = tgc.New(tgcOptions(cfg, sink, a))
+	c := cfg.Get()
+	for _, accCfg := range c.Accounts {
+		a.initAccountRuntime(accCfg)
+	}
+	a.activeAcc = c.ActiveAccount
+	if rt, ok := a.accounts[a.activeAcc]; ok {
+		a.TG = rt.tg
+	} else if len(a.accounts) > 0 {
+		for id, rt := range a.accounts {
+			a.activeAcc = id
+			a.TG = rt.tg
+			break
+		}
+	}
 	a.Plugins = plugins.New(a, pluginDir(layout, cfg), store, sink, plugins.Options{
 		Version:      buildinfo.Version,
 		MemoryMB:     cfg.Get().Plugins.DefaultMemoryMB,
@@ -125,8 +153,8 @@ func pluginDir(layout paths.Layout, cfg *config.Store) string {
 func tgcOptions(cfg *config.Store, log *logx.Logger, a *App) tgc.Options {
 	c := cfg.Get()
 	return tgc.Options{
-		AppID:          c.Telegram.AppID,
-		AppHash:        c.Telegram.AppHash,
+		AppID:          c.EffectiveAppID(),
+		AppHash:        c.EffectiveAppHash(),
 		Phone:          c.Telegram.Phone,
 		SessionPath:    a.Paths.SessionFile(),
 		TestDC:         c.Telegram.TestDC,
@@ -143,6 +171,11 @@ func tgcOptions(cfg *config.Store, log *logx.Logger, a *App) tgc.Options {
 		Logger:         log,
 		OnState: func(s proto.SessionState, err string) {
 			log.Info("session state", logx.F("state", string(s)), logx.F("error", err))
+			if s == proto.StateError || strings.Contains(strings.ToLower(err), "api_id") || strings.Contains(strings.ToLower(err), "flood") {
+				if !c.UsingCustomAPIKeys() {
+					log.Warn("⚠ Можлива проблема зі стандартними ключами Telegram. Ви можете встановити власні ключі через 'aurora setup' або у веб-панелі", logx.F("error", err))
+				}
+			}
 			switch s {
 			case proto.StateAuthorized:
 				a.Plugins.Emit(proto.EventSessionStart, a.TG.Me())
@@ -199,29 +232,35 @@ func (a *App) Run(ctx context.Context) error {
 	})
 	a.publish(proto.Event{Name: proto.EventCoreStart, Data: started})
 
-	go a.runTelegram(ctx)
+	a.accountsMu.RLock()
+	for _, rt := range a.accounts {
+		accCtx, accCancel := context.WithCancel(ctx)
+		rt.cancel = accCancel
+		go a.runTelegramForAccount(accCtx, rt.id, rt.tg)
+	}
+	a.accountsMu.RUnlock()
+
 	<-ctx.Done()
 
 	a.shutdown()
 	return nil
 }
 
-func (a *App) runTelegram(ctx context.Context) {
+func (a *App) runTelegramForAccount(ctx context.Context, id string, tg *tgc.Runtime) {
 	backoff := time.Second
 	for {
-		err := a.TG.Run(ctx)
+		err := tg.Run(ctx)
 		if ctx.Err() != nil {
 			return
 		}
 		if err == nil {
-			// Run returned cleanly — the context ended or the client closed.
 			return
 		}
 		if errors.Is(err, tgc.ErrLoginAborted) {
-			a.Log.Warn("login aborted, retrying in 10s")
+			a.Log.Warn("login aborted", logx.F("acc", id))
 			backoff = 10 * time.Second
 		} else {
-			a.Log.Error("telegram runtime stopped", logx.F("error", err), logx.F("retry_in", backoff))
+			a.Log.Error("account runtime stopped", logx.F("acc", id), logx.F("error", err), logx.F("retry_in", backoff))
 			backoff = nextBackoff(backoff, 2*time.Minute)
 		}
 		select {
@@ -352,19 +391,29 @@ func (a *App) Status() proto.Status {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
+	tg := a.getTG("")
+	var session proto.SessionState = proto.StateOffline
+	var user *proto.User
+	if tg != nil {
+		session = tg.State()
+		user = tg.Me()
+	}
+
 	st := proto.Status{
-		Core:        "aurora",
-		Version:     buildinfo.Version,
-		GoVersion:   runtime.Version(),
-		Uptime:      time.Since(a.startedAt).Round(time.Second).String(),
-		UptimeSec:   int64(time.Since(a.startedAt).Seconds()),
-		MemoryMB:    float64(m.HeapAlloc) / (1024 * 1024),
-		Goroutines:  runtime.NumGoroutine(),
-		Session:     a.TG.State(),
-		User:        a.TG.Me(),
-		PluginCount: len(a.Plugins.Names()),
-		PluginsUp:   len(a.Plugins.Running()),
-		MemLimitMB:  cfg.Runtime.MemLimitMB,
+		Core:          "aurora",
+		Version:       buildinfo.Version,
+		GoVersion:     runtime.Version(),
+		Uptime:        time.Since(a.startedAt).Round(time.Second).String(),
+		UptimeSec:     int64(time.Since(a.startedAt).Seconds()),
+		MemoryMB:      float64(m.HeapAlloc) / (1024 * 1024),
+		Goroutines:    runtime.NumGoroutine(),
+		Session:       session,
+		User:          user,
+		PluginCount:   len(a.Plugins.Names()),
+		PluginsUp:     len(a.Plugins.Running()),
+		MemLimitMB:    cfg.Runtime.MemLimitMB,
+		ActiveAccount: a.ActiveAccountID(),
+		Accounts:      a.Accounts(),
 	}
 	if a.Web != nil {
 		st.Web = proto.WebStatus{Enabled: true, URL: a.Web.URL()}
@@ -399,7 +448,11 @@ func (a *App) Command(ctx context.Context, name, text string) (string, error) {
 
 // Send implements web.Backend.
 func (a *App) Send(ctx context.Context, req proto.SendRequest) (proto.SendResult, error) {
-	return a.TG.Send(ctx, req)
+	tg := a.getTG(req.AccountID)
+	if tg == nil {
+		return proto.SendResult{}, errors.New("no active Telegram account")
+	}
+	return tg.Send(ctx, req)
 }
 
 // PluginAction implements web.Backend.
@@ -425,22 +478,70 @@ func (a *App) PluginAction(ctx context.Context, name, action string) (string, er
 	}
 }
 
+var safePluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,31}$`)
+
+func validatePluginName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("назва плагіна не може бути порожньою")
+	}
+	if name == "." || name == ".." || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return errors.New("некоректна назва плагіна: неприпустимі символи або шлях")
+	}
+	if !safePluginNameRe.MatchString(name) {
+		return fmt.Errorf("некоректна назва плагіна %q: дозволені лише [a-z0-9_.-], до 32 символів", name)
+	}
+	return nil
+}
+
+func validatePluginSource(source string) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return errors.New("порожнє джерело плагіна")
+	}
+	if strings.HasPrefix(source, "-") {
+		return errors.New("некоректне джерело плагіна: аргументи-прапорці заборонені")
+	}
+	if strings.HasPrefix(source, "git@") {
+		return nil
+	}
+	u, err := url.Parse(source)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return errors.New("некоректний URL плагіна: очікується http(s)://, git:// або ssh://")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https", "http", "git", "ssh":
+		return nil
+	default:
+		return fmt.Errorf("непідтримуваний протокол URL: %q (дозволено лише https, http, git, ssh)", u.Scheme)
+	}
+}
+
 // PluginInstall implements web.Backend. It clones a git repository into the
 // plugin directory and starts it if a valid manifest is present.
 func (a *App) PluginInstall(ctx context.Context, source, name string) (string, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return "", errors.New("git не встановлено: pkg install git")
 	}
+	if err := validatePluginSource(source); err != nil {
+		return "", err
+	}
 	if name == "" {
 		name = guessPluginName(source)
 	}
-	if name == "" {
-		return "", errors.New("не вдалося визначити ім’я плагіна — вкажіть його вручну")
+	if err := validatePluginName(name); err != nil {
+		return "", err
 	}
 	if _, ok := a.Plugins.Get(name); ok {
 		return "", fmt.Errorf("плагін %q вже встановлено", name)
 	}
 	dst := filepath.Join(a.Plugins.Root(), name)
+	cleanRoot := filepath.Clean(a.Plugins.Root())
+	cleanDst := filepath.Clean(dst)
+	rel, err := filepath.Rel(cleanRoot, cleanDst)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("каталог призначення плагіна виходить за межі дозволеного")
+	}
 	if _, err := os.Stat(dst); err == nil {
 		return "", fmt.Errorf("каталог %s вже існує", dst)
 	}
@@ -448,7 +549,7 @@ func (a *App) PluginInstall(ctx context.Context, source, name string) (string, e
 	a.Log.Info("installing plugin", logx.F("name", name), logx.F("source", source))
 	gctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	git := exec.CommandContext(gctx, "git", "clone", "--depth", "1", source, dst)
+	git := exec.CommandContext(gctx, "git", "clone", "--depth", "1", "--", source, dst)
 	if out, err := git.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(dst)
 		return "", fmt.Errorf("git clone: %v: %s", err, strings.TrimSpace(string(out)))
@@ -456,6 +557,7 @@ func (a *App) PluginInstall(ctx context.Context, source, name string) (string, e
 
 	inst, err := a.Plugins.Install(dst)
 	if err != nil {
+		_ = os.RemoveAll(dst)
 		return "", err
 	}
 	if err := a.Plugins.Start(ctx, name); err != nil {
@@ -641,4 +743,343 @@ func (a *App) PluginNames() []string {
 	names := a.Plugins.Names()
 	sort.Strings(names)
 	return names
+}
+
+func (a *App) initAccountRuntime(accCfg config.AccountConfig) *accountRuntime {
+	opts := a.tgcOptionsForAccount(accCfg)
+	rt := &accountRuntime{
+		id:    accCfg.ID,
+		title: accCfg.Title,
+		phone: accCfg.Phone,
+		tg:    tgc.New(opts),
+	}
+	a.accounts[accCfg.ID] = rt
+	return rt
+}
+
+func (a *App) tgcOptionsForAccount(acc config.AccountConfig) tgc.Options {
+	c := a.Cfg.Get()
+	sink := a.Log.Scoped("acc:" + acc.ID)
+	return tgc.Options{
+		AppID:          acc.EffectiveAppID(c.Telegram.AppID),
+		AppHash:        acc.EffectiveAppHash(c.Telegram.AppHash),
+		Phone:          acc.Phone,
+		SessionPath:    a.Paths.AccountSessionFile(acc.ID),
+		TestDC:         c.Telegram.TestDC,
+		BlockedMode:    c.Telegram.BlockedMode,
+		MTProxy:        c.Telegram.MTProxy,
+		Socks5:         c.Telegram.Socks5,
+		DeviceName:     c.Telegram.DeviceName,
+		DeviceModel:    c.Telegram.DeviceModel,
+		DeviceSystem:   c.Telegram.DeviceSystem,
+		DeviceVersion:  c.Telegram.DeviceVersion,
+		DeviceLanguage: c.Telegram.DeviceLanguage,
+		PFS:            c.Telegram.PFS,
+		NoUpdates:      c.Telegram.DisableUpdates,
+		Logger:         sink,
+		OnState: func(s proto.SessionState, err string) {
+			sink.Info("session state", logx.F("state", string(s)), logx.F("error", err))
+			switch s {
+			case proto.StateAuthorized:
+				tg := a.getTG(acc.ID)
+				if tg != nil {
+					a.emitForAccount(acc.ID, proto.EventSessionStart, tg.Me())
+				}
+			case proto.StateOffline, proto.StateError:
+				a.emitForAccount(acc.ID, proto.EventSessionEnd, map[string]string{"account_id": acc.ID, "state": string(s), "error": err})
+			}
+			a.publish(proto.Event{
+				AccountID: acc.ID,
+				Name:      "core.state",
+				Data:      map[string]string{"account_id": acc.ID, "state": string(s), "error": err},
+			})
+		},
+		OnEvent: func(name string, data any) {
+			a.emitForAccount(acc.ID, name, data)
+		},
+	}
+}
+
+func (a *App) getTG(id string) *tgc.Runtime {
+	a.accountsMu.RLock()
+	defer a.accountsMu.RUnlock()
+	if id == "" {
+		id = a.activeAcc
+	}
+	if rt, ok := a.accounts[id]; ok && rt.tg != nil {
+		return rt.tg
+	}
+	return a.TG
+}
+
+func (a *App) emitForAccount(accID string, name string, data any) {
+	a.Plugins.EmitForAccount(accID, name, data, func(accountID, pluginName string) bool {
+		return a.IsPluginEnabledForAccount(accountID, pluginName)
+	})
+	a.publish(proto.Event{
+		AccountID: accID,
+		Name:      name,
+		Data:      data,
+	})
+}
+
+func (a *App) IsPluginEnabledForAccount(accID, pluginName string) bool {
+	c := a.Cfg.Get()
+	acc, ok := c.GetAccount(accID)
+	if !ok {
+		return true
+	}
+	return acc.IsPluginEnabled(pluginName)
+}
+
+func (a *App) Accounts() []proto.AccountInfo {
+	a.accountsMu.RLock()
+	defer a.accountsMu.RUnlock()
+
+	c := a.Cfg.Get()
+	var out []proto.AccountInfo
+	for _, accCfg := range c.Accounts {
+		info := proto.AccountInfo{
+			ID:             accCfg.ID,
+			Title:          accCfg.Title,
+			Phone:          accCfg.Phone,
+			EnabledPlugins: accCfg.EnabledPlugins,
+			IsActive:       accCfg.ID == a.activeAcc,
+		}
+		if rt, ok := a.accounts[accCfg.ID]; ok && rt.tg != nil {
+			info.Session = rt.tg.State()
+			info.User = rt.tg.Me()
+		} else {
+			info.Session = proto.StateOffline
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+func (a *App) ActiveAccountID() string {
+	a.accountsMu.RLock()
+	defer a.accountsMu.RUnlock()
+	return a.activeAcc
+}
+
+func (a *App) SetActiveAccount(id string) error {
+	a.accountsMu.Lock()
+	rt, ok := a.accounts[id]
+	if !ok {
+		a.accountsMu.Unlock()
+		return fmt.Errorf("account %q not found", id)
+	}
+	a.activeAcc = id
+	a.TG = rt.tg
+	a.accountsMu.Unlock()
+
+	_ = a.Cfg.Update(func(c *config.Config) {
+		c.ActiveAccount = id
+	})
+
+	a.publish(proto.Event{
+		AccountID: id,
+		Name:      "account.activated",
+		Data:      map[string]any{"id": id},
+	})
+	return nil
+}
+
+func (a *App) AddAccount(title, phone string, appID int, appHash string) (proto.AccountInfo, error) {
+	id := fmt.Sprintf("acc_%d", time.Now().UnixNano()/1e6)
+	if title == "" {
+		if phone != "" {
+			title = phone
+		} else {
+			title = "Акаунт " + id[4:8]
+		}
+	}
+
+	accCfg := config.AccountConfig{
+		ID:             id,
+		Title:          title,
+		Phone:          phone,
+		AppID:          appID,
+		AppHash:        appHash,
+		EnabledPlugins: nil,
+	}
+
+	err := a.Cfg.Update(func(c *config.Config) {
+		c.Accounts = append(c.Accounts, accCfg)
+		c.ActiveAccount = id
+	})
+	if err != nil {
+		return proto.AccountInfo{}, err
+	}
+
+	a.accountsMu.Lock()
+	rt := a.initAccountRuntime(accCfg)
+	a.activeAcc = id
+	a.TG = rt.tg
+	a.accountsMu.Unlock()
+
+	ctx := context.Background()
+	accCtx, accCancel := context.WithCancel(ctx)
+	rt.cancel = accCancel
+	go a.runTelegramForAccount(accCtx, id, rt.tg)
+
+	a.publish(proto.Event{
+		AccountID: id,
+		Name:      "account.added",
+		Data:      map[string]any{"id": id, "title": title, "phone": phone},
+	})
+
+	return proto.AccountInfo{
+		ID:             id,
+		Title:          title,
+		Phone:          phone,
+		Session:        proto.StateOffline,
+		EnabledPlugins: nil,
+		IsActive:       true,
+	}, nil
+}
+
+func (a *App) RemoveAccount(id string) error {
+	a.accountsMu.Lock()
+	defer a.accountsMu.Unlock()
+
+	if len(a.accounts) <= 1 {
+		return errors.New("не можна видалити єдиний активний акаунт")
+	}
+
+	rt, ok := a.accounts[id]
+	if !ok {
+		return fmt.Errorf("акаунт %q не знайдено", id)
+	}
+
+	if rt.cancel != nil {
+		rt.cancel()
+	}
+	_ = rt.tg.Logout(context.Background())
+	_ = os.Remove(a.Paths.AccountSessionFile(id))
+	delete(a.accounts, id)
+
+	var nextActive string
+	for otherID := range a.accounts {
+		nextActive = otherID
+		break
+	}
+	if a.activeAcc == id {
+		a.activeAcc = nextActive
+		if nextRT, ok := a.accounts[nextActive]; ok {
+			a.TG = nextRT.tg
+		}
+	}
+
+	_ = a.Cfg.Update(func(c *config.Config) {
+		var newAccs []config.AccountConfig
+		for _, acc := range c.Accounts {
+			if acc.ID != id {
+				newAccs = append(newAccs, acc)
+			}
+		}
+		c.Accounts = newAccs
+		c.ActiveAccount = a.activeAcc
+	})
+
+	a.publish(proto.Event{
+		AccountID: id,
+		Name:      "account.removed",
+		Data:      map[string]any{"id": id, "active": a.activeAcc},
+	})
+	return nil
+}
+
+func (a *App) ToggleAccountPlugin(accID, pluginName string) (bool, error) {
+	var enabled bool
+	err := a.Cfg.Update(func(c *config.Config) {
+		var errToggle error
+		enabled, errToggle = c.ToggleAccountPlugin(accID, pluginName, a.PluginNames())
+		if errToggle != nil {
+			a.Log.Warn("toggle plugin error", logx.F("error", errToggle))
+		}
+	})
+	if err != nil {
+		return false, err
+	}
+	a.publish(proto.Event{
+		AccountID: accID,
+		Name:      "account.plugin.toggle",
+		Data: map[string]any{
+			"account_id": accID,
+			"plugin":     pluginName,
+			"enabled":    enabled,
+		},
+	})
+	return enabled, nil
+}
+
+func (a *App) AuthForAccount(accID string) web.AuthState {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return web.AuthState{State: proto.AuthPhone}
+	}
+	step := tg.Step()
+	st := web.AuthState{State: step, SignedIn: step == tgc.AuthSignedIn}
+	st.Phone = maskPhone(tg.Phone())
+	if st.State == tgc.AuthSignedIn && tg.State() == proto.StateAuthorized {
+		st.Message = "авторизовано"
+	}
+	return st
+}
+
+func (a *App) RequestCodeForAccount(ctx context.Context, accID string, phone string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("account not found")
+	}
+	if phone != "" {
+		tg.SetPhone(phone)
+		_ = a.Cfg.Update(func(c *config.Config) {
+			for i := range c.Accounts {
+				if c.Accounts[i].ID == accID {
+					c.Accounts[i].Phone = phone
+					break
+				}
+			}
+		})
+	}
+	return tg.RequestCode(ctx, phone)
+}
+
+func (a *App) SubmitCodeForAccount(accID string, code string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("account not found")
+	}
+	return tg.SubmitCode(code)
+}
+
+func (a *App) SubmitPasswordForAccount(accID string, password string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("account not found")
+	}
+	return tg.SubmitPassword(password)
+}
+
+func (a *App) SessionForAccount(accID string) proto.SessionInfo {
+	return tgc.InspectSession(a.Paths.AccountSessionFile(accID))
+}
+
+func (a *App) ImportSessionForAccount(accID string, s string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("account not found")
+	}
+	return tg.ImportSession(s)
+}
+
+func (a *App) LogoutForAccount(ctx context.Context, accID string) error {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return errors.New("account not found")
+	}
+	return tg.Logout(ctx)
 }

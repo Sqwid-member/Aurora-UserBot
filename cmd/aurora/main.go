@@ -11,7 +11,9 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"strconv"
 	"syscall"
+	"os/exec"
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/app"
@@ -30,7 +32,13 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
 
 Команди:
   run                 запустити ядро (Telegram + плагіни + панель) — за замовчуванням
-  login               інтерактивний вхід у Telegram
+  start               запустити у фоновому режимі (демон для Termux/Linux)
+  stop                зупинити фоновий процес
+  restart             перезапустити фоновий процес
+  status              перевірити стан процесу та RAM
+  logs                перегляд живого журналу логів
+  setup               інтерактивне первинне налаштування (app_id, app_hash)
+  login [web]         авторизація в Telegram (у терміналі або у веб-панелі)
   panel               надрукувати адресу панелі та токен
   send <peer> <текст>  надіслати повідомлення
   plugins             список плагінів
@@ -66,8 +74,16 @@ func main() {
 
 func run(args []string) error {
 	cmd := "run"
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		cmd, args = args[0], args[1:]
+	if len(args) > 0 {
+		if args[0] == "-h" || args[0] == "--help" {
+			cmd = "help"
+			args = args[1:]
+		} else if args[0] == "-v" || args[0] == "--version" {
+			cmd = "version"
+			args = args[1:]
+		} else if !strings.HasPrefix(args[0], "-") {
+			cmd, args = args[0], args[1:]
+		}
 	}
 
 	layout, err := paths.Resolve(paths.OSEnv)
@@ -78,8 +94,22 @@ func run(args []string) error {
 	switch cmd {
 	case "run":
 		return cmdRun(layout)
+	case "start":
+		return cmdStart(layout)
+	case "stop":
+		return cmdStop(layout)
+	case "restart":
+		_ = cmdStop(layout)
+		time.Sleep(500 * time.Millisecond)
+		return cmdStart(layout)
+	case "status":
+		return cmdStatus(layout)
+	case "logs":
+		return cmdLogs(layout)
+	case "setup":
+		return cmdSetup(layout)
 	case "login":
-		return cmdLogin(layout)
+		return cmdLogin(layout, args)
 	case "panel":
 		return cmdPanel(layout)
 	case "send":
@@ -135,6 +165,25 @@ func mustApp(layout paths.Layout, scope string) (*app.App, error) {
 // ---- run ----
 
 func cmdRun(layout paths.Layout) error {
+	store, err := config.Open(layout.ConfigFile(), nil)
+	if err == nil {
+		if errVal := store.Get().Validate(); errVal != nil {
+			if isCharDevice(os.Stdin) {
+				fmt.Fprintln(os.Stderr, "⚠ Конфігурація не заповнена:", errVal)
+				fmt.Fprint(os.Stderr, "  Запустити інтерактивне налаштування зараз? [Y/n]: ")
+				reader := bufio.NewReader(os.Stdin)
+				line, _ := reader.ReadString('\n')
+				ans := strings.TrimSpace(strings.ToLower(line))
+				if ans == "" || ans == "y" || ans == "yes" || ans == "т" || ans == "так" {
+					if err := cmdSetup(layout); err != nil {
+						return err
+					}
+				} else {
+					return errVal
+				}
+			}
+		}
+	}
 	a, err := mustApp(layout, "core")
 	if err != nil {
 		return err
@@ -179,7 +228,14 @@ func promptForLogin(ctx context.Context, a *app.App) {
 				line, _ := reader.ReadString('\n')
 				phone := strings.TrimSpace(line)
 				if phone != "" {
-					_ = a.RequestCode(ctx, phone)
+					if err := a.RequestCode(ctx, phone); err != nil {
+						fmt.Fprintf(os.Stderr, "  ✖ Помилка запиту коду: %v\n", err)
+						if strings.Contains(strings.ToUpper(err.Error()), "API_ID") || strings.Contains(strings.ToUpper(err.Error()), "FLOOD") {
+							if !a.Cfg.Get().UsingCustomAPIKeys() {
+								fmt.Fprintln(os.Stderr, "  ⚠ Стандартні ключі Telegram обмежено. Запустіть 'aurora setup' для встановлення власних ключів з my.telegram.org!")
+							}
+						}
+					}
 				}
 				askedCode = false
 			case tgc.AuthCode:
@@ -208,17 +264,39 @@ func promptForLogin(ctx context.Context, a *app.App) {
 
 // ---- login ----
 
-func cmdLogin(layout paths.Layout) error {
+func cmdLogin(layout paths.Layout, args []string) error {
+	if sessionExists(layout) {
+		fmt.Println("✓ сесія вже існує:", layout.SessionFile())
+		fmt.Println("  Щоб увійти заново: aurora logout && rm", layout.SessionFile())
+		return nil
+	}
+
+	mode := "terminal"
+	if len(args) > 0 && (args[0] == "--web" || args[0] == "web" || args[0] == "-w") {
+		mode = "web"
+	} else if isCharDevice(os.Stdin) && len(args) == 0 {
+		fmt.Println("🌌 Оберіть спосіб входу в Telegram:")
+		fmt.Println("   1) У терміналі прямо зараз (номер -> код -> пароль)")
+		fmt.Println("   2) У веб-панелі через браузер (відкриється посилання)")
+		fmt.Print("Ваш вибір [1/2, за замовчуванням 1]: ")
+		reader := bufio.NewReader(os.Stdin)
+		line, _ := reader.ReadString('\n')
+		ans := strings.TrimSpace(line)
+		if ans == "2" || strings.ToLower(ans) == "web" {
+			mode = "web"
+		}
+	}
+
+	if mode == "web" {
+		return cmdLoginWeb(layout)
+	}
+
 	a, err := mustApp(layout, "core")
 	if err != nil {
 		return err
 	}
 	if err := a.Cfg.Get().Validate(); err != nil {
 		return err
-	}
-	if sessionExists(layout) {
-		fmt.Println("✓ сесія вже існує:", layout.SessionFile())
-		fmt.Println("  Щоб увійти заново: aurora logout && rm", layout.SessionFile())
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -241,6 +319,51 @@ func cmdLogin(layout paths.Layout) error {
 	}
 	fmt.Println("✓ готово")
 	return nil
+}
+
+func cmdLoginWeb(layout paths.Layout) error {
+	store, err := config.Open(layout.ConfigFile(), nil)
+	if err != nil {
+		return err
+	}
+	c := store.Get()
+	host := c.Web.Host
+	if host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	url := fmt.Sprintf("http://%s:%d/?token=%s#auth", host, c.Web.Port, c.Web.Token)
+
+	if pid, running := checkPidRunning(layout.PidFile()); running {
+		fmt.Printf("✓ Aurora вже працює у фоні (PID %d)\n", pid)
+	} else {
+		fmt.Println("→ Запускаю фоновий процес Aurora для веб-панелі...")
+		if err := cmdStart(layout); err != nil {
+			return err
+		}
+	}
+
+	fmt.Println("\n🌐 Відкрийте посилання для входу у браузері:")
+	fmt.Printf("   %s\n\n", url)
+	openBrowserCLI(url)
+	return nil
+}
+
+func openBrowserCLI(url string) {
+	var candidates [][]string
+	if runtime.GOOS == "android" || paths.IsTermux() {
+		candidates = append(candidates, []string{"termux-open-url", url})
+	}
+	candidates = append(candidates,
+		[]string{"xdg-open", url},
+		[]string{"sensible-browser", url},
+		[]string{"open", url},
+	)
+	for _, c := range candidates {
+		if path, err := exec.LookPath(c[0]); err == nil {
+			_ = exec.Command(path, c[1:]...).Start()
+			return
+		}
+	}
 }
 
 // ---- panel ----
@@ -475,8 +598,12 @@ func cmdDoctor(layout paths.Layout) error {
 	if err == nil {
 		c := store.Get()
 		checks = append(checks,
-			check{"app_id", c.Telegram.AppID > 0, fmt.Sprintf("%d", c.Telegram.AppID)},
-			check{"app_hash", strings.TrimSpace(c.Telegram.AppHash) != "", maskSecret(c.Telegram.AppHash)},
+			check{"API ключі", true, func() string {
+				if c.UsingCustomAPIKeys() {
+					return fmt.Sprintf("власні (%d / %s)", c.Telegram.AppID, maskSecret(c.Telegram.AppHash))
+				}
+				return "стандартні (Telegram Desktop 2040)"
+			}()},
 			check{"сесія", tgc.InspectSession(layout.SessionFile()).Exists, layout.SessionFile()},
 		)
 	}
@@ -543,4 +670,270 @@ func maskSecret(s string) string {
 		return "••••"
 	}
 	return s[:3] + "…" + s[len(s)-3:]
+}
+
+func isCharDevice(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+func checkPidRunning(pidFile string) (int, bool) {
+	buf, err := os.ReadFile(pidFile)
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(buf)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, isPidAlive(pid)
+}
+
+func isPidAlive(pid int) bool {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
+}
+
+// ---- setup ----
+
+func cmdSetup(layout paths.Layout) error {
+	store, err := config.Open(layout.ConfigFile(), nil)
+	if err != nil {
+		return err
+	}
+	c := store.Get()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("🌌 Налаштування Telegram API ключів Aurora")
+	if c.UsingCustomAPIKeys() {
+		fmt.Printf("   Зараз активні: ВЛАСНІ ключі (App ID: %d, App Hash: %s)\n", c.Telegram.AppID, maskSecret(c.Telegram.AppHash))
+	} else {
+		fmt.Println("   Зараз активні: СТАНДАРТНІ публічні ключі Telegram (Desktop 2040)")
+	}
+	fmt.Println("   (За замовчуванням активні стандартні ключі: вхід лише за номером, кодом і паролем)")
+	fmt.Println("   Якщо у вас виникають блокування або помилки, ви можете вказати власні ключі з my.telegram.org")
+	fmt.Println()
+
+	fmt.Print("Бажаєте встановити власні ключі з my.telegram.org? [y/N]: ")
+	ansLine, _ := reader.ReadString('\n')
+	ans := strings.TrimSpace(strings.ToLower(ansLine))
+
+	var appID int
+	var appHash string
+
+	if ans == "y" || ans == "yes" || ans == "т" || ans == "так" {
+		for {
+			fmt.Print("Введіть Telegram App ID: ")
+			line, _ := reader.ReadString('\n')
+			val, err := strconv.Atoi(strings.TrimSpace(line))
+			if err == nil && val > 0 {
+				appID = val
+				break
+			}
+			fmt.Println("✖ App ID має бути додатним числом")
+		}
+		for {
+			fmt.Print("Введіть Telegram App Hash: ")
+			line, _ := reader.ReadString('\n')
+			line = strings.TrimSpace(line)
+			if len(line) >= 16 {
+				appHash = line
+				break
+			}
+			fmt.Println("✖ App Hash має містити щонайменше 16 символів")
+		}
+	} else {
+		appID = 0
+		appHash = ""
+		fmt.Println("✓ Обрано стандартні ключі Telegram (без потреби в my.telegram.org)")
+	}
+
+	fmt.Print("Номер телефону для входу (+380..., або Enter щоб пропустити): ")
+	phoneLine, _ := reader.ReadString('\n')
+	phone := strings.TrimSpace(phoneLine)
+
+	err = store.Update(func(cfg *config.Config) {
+		cfg.Telegram.AppID = appID
+		cfg.Telegram.AppHash = appHash
+		if phone != "" {
+			cfg.Telegram.Phone = phone
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("помилка збереження: %w", err)
+	}
+
+	fmt.Println("\n✓ Конфігурацію збережено в:", layout.ConfigFile())
+	fmt.Println("  Вхід у Telegram (номер -> код -> пароль):")
+	fmt.Println("    aurora run     (у терміналі)")
+	fmt.Println("    aurora start   (у фоні)")
+	return nil
+}
+
+// ---- start (daemon) ----
+
+func cmdStart(layout paths.Layout) error {
+	if pid, running := checkPidRunning(layout.PidFile()); running {
+		return fmt.Errorf("aurora вже працює (PID %d)", pid)
+	}
+
+	store, err := config.Open(layout.ConfigFile(), nil)
+	if err != nil {
+		return err
+	}
+	c := store.Get()
+	if err := c.Validate(); err != nil {
+		return fmt.Errorf("конфігурація не налаштована: виконайте 'aurora setup'")
+	}
+
+	if err := layout.Ensure(); err != nil {
+		return err
+	}
+
+	// У Termux запобігаємо засинанню процесора при вимкненому екрані
+	if paths.IsTermux() {
+		if wl, err := exec.LookPath("termux-wake-lock"); err == nil {
+			_ = exec.Command(wl).Run()
+		}
+	}
+
+	bin, err := os.Executable()
+	if err != nil {
+		bin = "aurora"
+	}
+
+	logFile, err := os.OpenFile(layout.LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("відкриття лог-файлу: %w", err)
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(bin, "run")
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = sysProcAttrDaemon()
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("запуск фонового процесу: %w", err)
+	}
+
+	fmt.Printf("✓ Aurora запущена у фоні (PID %d)\n", cmd.Process.Pid)
+	fmt.Printf("  Логи:    aurora logs\n")
+	fmt.Printf("  Статус:  aurora status\n")
+	fmt.Printf("  Панель:  aurora panel\n")
+	fmt.Printf("  Зупинка: aurora stop\n")
+	return nil
+}
+
+// ---- stop ----
+
+func cmdStop(layout paths.Layout) error {
+	pid, running := checkPidRunning(layout.PidFile())
+	if !running {
+		_ = os.Remove(layout.PidFile())
+		fmt.Println("aurora не запущена")
+		return nil
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("сигнал зупинки: %w", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(200 * time.Millisecond)
+		if !isPidAlive(pid) {
+			break
+		}
+	}
+
+	if isPidAlive(pid) {
+		_ = proc.Kill()
+	}
+	_ = os.Remove(layout.PidFile())
+
+	if paths.IsTermux() {
+		if wu, err := exec.LookPath("termux-wake-unlock"); err == nil {
+			_ = exec.Command(wu).Run()
+		}
+	}
+
+	fmt.Printf("✓ Aurora (PID %d) зупинена\n", pid)
+	return nil
+}
+
+// ---- status ----
+
+func cmdStatus(layout paths.Layout) error {
+	pid, running := checkPidRunning(layout.PidFile())
+	if !running {
+		fmt.Println("● Стан: зупинено (inactive)")
+		return nil
+	}
+
+	fmt.Printf("● Стан: активний (PID %d)\n", pid)
+	if rss := readProcessRSS(pid); rss != "" {
+		fmt.Printf("  Пам'ять:  %s\n", rss)
+	}
+	if sessionExists(layout) {
+		fmt.Printf("  Сесія:    авторизовано (%s)\n", layout.SessionFile())
+	} else {
+		fmt.Printf("  Сесія:    не авторизовано (виконайте 'aurora login')\n")
+	}
+
+	store, err := config.Open(layout.ConfigFile(), nil)
+	if err == nil {
+		c := store.Get()
+		if c.Web.Enabled {
+			host := c.Web.Host
+			if host == "0.0.0.0" || host == "::" {
+				host = "127.0.0.1"
+			}
+			fmt.Printf("  Панель:   http://%s:%d/?token=%s\n", host, c.Web.Port, c.Web.Token)
+		}
+	}
+	return nil
+}
+
+// ---- logs ----
+
+func cmdLogs(layout paths.Layout) error {
+	logPath := layout.LogFile()
+	if _, err := os.Stat(logPath); err != nil {
+		fmt.Println("Файл логів ще не створений:", logPath)
+		return nil
+	}
+
+	if tail, err := exec.LookPath("tail"); err == nil {
+		cmd := exec.Command(tail, "-n", "50", "-f", logPath)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		return cmd.Run()
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	start := 0
+	if len(lines) > 50 {
+		start = len(lines) - 50
+	}
+	for _, l := range lines[start:] {
+		fmt.Println(l)
+	}
+	return nil
 }

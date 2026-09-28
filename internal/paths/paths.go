@@ -95,6 +95,15 @@ func (l Layout) DBFile() string { return filepath.Join(l.Config, "aurora.db") }
 // SessionFile is the path of the MTProto session blob.
 func (l Layout) SessionFile() string { return filepath.Join(l.Data, "session.json") }
 
+// AccountSessionFile returns the session file path for a specific account.
+func (l Layout) AccountSessionFile(id string) string {
+	if id == "" || id == "default" {
+		return l.SessionFile()
+	}
+	clean := filepath.Base(id)
+	return filepath.Join(l.Data, "session_"+clean+".json")
+}
+
 // LogFile is the path of the main log file.
 func (l Layout) LogFile() string { return filepath.Join(l.Logs, "aurora.log") }
 
@@ -123,4 +132,9 @@ func (l Layout) Ensure() error {
 		}
 	}
 	return nil
+}
+
+// IsTermux reports whether the process is executing inside the Termux environment.
+func IsTermux() bool {
+	return os.Getenv("PREFIX") == "/data/data/com.termux/files/usr"
 }
