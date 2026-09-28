@@ -178,12 +178,17 @@ build_from_source() {
   fi
 
   local src="${AURORA_SRC:-$HOME/.local/src/aurora}"
-  if [ ! -d "$src/.git" ]; then
+  local clone_url="https://github.com/$REPO.git"
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    clone_url="https://${GITHUB_TOKEN}@github.com/$REPO.git"
+  fi
+
+  if [ -d "$src/.git" ]; then
+    say "Оновлення вихідного коду..."
+    git -C "$src" fetch origin main || true
+    git -C "$src" reset --hard origin/main || true
+  else
     mkdir -p "$(dirname "$src")"
-    local clone_url="https://github.com/$REPO.git"
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
-      clone_url="https://${GITHUB_TOKEN}@github.com/$REPO.git"
-    fi
     git clone --depth 1 "$clone_url" "$src" || die "git clone не вдався"
   fi
 
