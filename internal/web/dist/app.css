@@ -340,6 +340,7 @@ body {
 .tab-btn .md-icon { transition: transform 0.3s var(--ease); }
 .tab-btn:hover .md-icon { transform: translateY(-1px); }
 
+.tab-btn:focus-visible, .modal-close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .tab-btn .badge {
   font-size: 11px;
   font-weight: 500;
@@ -463,78 +464,47 @@ body {
   justify-content: center;
   gap: 6px;
   height: var(--control-height);
-  padding: 0 11px;
-  border: none;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: var(--v2-background-bg-button-neutral);
-  box-shadow: var(--v2-elevation-button-neutral);
+  background: transparent;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 530;
+  font-weight: 500;
   line-height: 20px;
-  letter-spacing: -0.04px;
-  color: var(--text);
+  color: var(--text-2);
   cursor: pointer;
   white-space: nowrap;
-  position: relative;
-  overflow: hidden;
   font-variant-numeric: tabular-nums;
-  transition: background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .btn .md-icon { transition: transform 0.35s var(--ease); }
-.btn:hover {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-    linear-gradient(90deg, var(--v2-background-bg-button-neutral), var(--v2-background-bg-button-neutral));
-}
-.btn:active {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-pressed), var(--v2-overlay-simple-overlay-pressed)),
-    linear-gradient(90deg, var(--v2-background-bg-button-neutral), var(--v2-background-bg-button-neutral));
-}
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn.active {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-pressed), var(--v2-overlay-simple-overlay-pressed)),
-    linear-gradient(90deg, var(--v2-background-bg-button-neutral), var(--v2-background-bg-button-neutral));
-}
+.btn:hover { background: var(--surface-2); border-color: var(--text-3); color: var(--text); }
+.btn:active { background: var(--surface-3); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .btn-primary {
-  background-color: transparent;
-  background-image:
-    linear-gradient(180deg, var(--v2-alpha-light-20), var(--v2-alpha-light-0)),
-    linear-gradient(90deg, var(--v2-background-bg-contrast), var(--v2-background-bg-contrast));
-  color: var(--v2-text-text-contrast);
-  box-shadow: var(--v2-elevation-button-contrast);
-  font-weight: 530;
+  background: var(--accent-bg);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
 }
-.btn-primary:hover {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-contrast-hover), var(--v2-overlay-simple-overlay-contrast-hover)),
-    linear-gradient(180deg, var(--v2-alpha-light-20), var(--v2-alpha-light-0)),
-    linear-gradient(90deg, var(--v2-background-bg-contrast), var(--v2-background-bg-contrast));
-}
-.btn-primary:active {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-contrast-pressed), var(--v2-overlay-simple-overlay-contrast-pressed)),
-    linear-gradient(180deg, var(--v2-alpha-light-20), var(--v2-alpha-light-0)),
-    linear-gradient(90deg, var(--v2-background-bg-contrast), var(--v2-background-bg-contrast));
-}
+.btn-primary:hover { background: var(--accent-bg); border-color: transparent; color: var(--accent-ink); filter: brightness(1.08); }
+.btn-primary:active { filter: brightness(0.96); }
 
-.btn-success { color: var(--ok); }
-.btn-success:hover { color: var(--ok); }
+.btn-success { color: var(--ok); border-color: transparent; }
+.btn-success:hover { color: var(--ok); border-color: transparent; background: color-mix(in srgb, var(--ok) 12%, transparent); }
 
-.btn-warning { color: var(--warn); }
-.btn-warning:hover { color: var(--warn); }
+.btn-warning { color: var(--warn); border-color: transparent; }
+.btn-warning:hover { color: var(--warn); border-color: transparent; background: color-mix(in srgb, var(--warn) 12%, transparent); }
 
-.btn-danger { color: var(--err); }
-.btn-danger:hover { color: var(--err); }
+.btn-danger { color: var(--err); border-color: transparent; }
+.btn-danger:hover { color: var(--err); border-color: transparent; background: color-mix(in srgb, var(--err) 12%, transparent); }
 
 .btn-sm { height: var(--control-height-sm); padding: 0 9px; border-radius: var(--radius-xs); font-size: 12px; }
-.ram-pill .btn-sm { height: 20px; padding: 0 8px; font-size: 11px; }
-
-.btn-control-menu { box-shadow: inset 0 0 0 1px var(--line); }
-.btn-control-menu:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ram-pill .btn-sm { height: 20px; padding: 0 8px; font-size: 11px; border-color: transparent; }
 
 .shortcut-badge {
   font-size: 10px;
@@ -803,7 +773,16 @@ body {
   border-top: 1px solid var(--line);
 }
 .plugin-stats-text { font-size: 11px; color: var(--text-3); }
-.plugin-actions { display: flex; align-items: center; gap: 6px; }
+.plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* ==========================================================================
    Термінал і логи
@@ -1100,6 +1079,11 @@ body {
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
+  max-width: min(360px, calc(100vw - 40px));
+}
+@media (max-width: 600px) {
+  .toast-container { left: 12px; right: 12px; top: 12px; max-width: none; }
+  .toast { min-width: 0; width: 100%; }
 }
 
 .toast {
