@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParseLang(t *testing.T) {
@@ -71,6 +72,26 @@ func TestApplyDetectedDeviceKeepsExplicit(t *testing.T) {
 func TestDetectDeviceNoCrash(t *testing.T) {
 	_ = DetectDevice()
 	_ = DetectedDeviceSummary()
+}
+
+// TestGetPropsNoStdlibExec guards the Android SIGSYS trap: property lookup
+// must never go through os/exec.LookPath (faccessat2 kills the process).
+// It must simply return empty maps where getprop is absent.
+func TestGetPropsNoStdlibExec(t *testing.T) {
+	done := make(chan map[string]string, 1)
+	go func() {
+		done <- getProps(map[string]string{"model": "ro.product.model"})
+	}()
+	select {
+	case out := <-done:
+		for k, v := range out {
+			if k == "" || v == "" {
+				t.Errorf("empty key/value in %q", k)
+			}
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("getProps hung")
+	}
 }
 
 func TestSnapshotDeviceFillsOnlyEmpty(t *testing.T) {

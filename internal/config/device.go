@@ -3,11 +3,12 @@ package config
 import (
 	"context"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 )
 
 // DeviceInfo describes the physical phone Aurora runs on. It is used to
@@ -204,10 +205,13 @@ func parseLang(locale string) string {
 	return locale
 }
 
-// getProps reads several Android system properties in one getprop call.
+// getProps reads several Android system properties via getprop.
+// It must never use the standard exec.LookPath/exec.Command: those call
+// faccessat2, which Android's seccomp answers with SIGSYS — instant death,
+// no error to handle. sysx wrappers stat instead.
 func getProps(names map[string]string) map[string]string {
 	out := map[string]string{}
-	path, err := exec.LookPath("getprop")
+	path, err := sysx.LookPath("getprop")
 	if err != nil {
 		if _, serr := os.Stat("/system/bin/getprop"); serr != nil {
 			return out
@@ -219,7 +223,7 @@ func getProps(names map[string]string) map[string]string {
 	// One process for all keys: "getprop" with no args dumps everything,
 	// but parsing that is fragile across vendors, so query per key.
 	for key, prop := range names {
-		cmd := exec.CommandContext(ctx, path, prop)
+		cmd := sysx.CommandContext(ctx, path, prop)
 		raw, err := cmd.Output()
 		if err != nil {
 			continue
