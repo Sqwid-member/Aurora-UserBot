@@ -69,13 +69,13 @@ func (v *loginView) resume() {
 		v.input.Placeholder = "12345"
 		v.msg = "код уже надіслано — введіть його"
 	case proto.AuthPassword:
-		v.step = 2
+		v.step = 3
 		v.input.Mask = '\u2022'
 		v.input.Title = " Пароль 2FA "
 		v.input.Placeholder = "пароль"
 		v.msg = "потрібен пароль 2FA"
 	case proto.AuthSignedIn:
-		v.step = 3
+		v.step = 4
 		v.signed = true
 		v.msg = ""
 		v.err = ""
@@ -221,9 +221,11 @@ func (v *loginView) Draw(f *tui.Frame) {
 	hint := " Enter — підтвердити · Esc — назад "
 	switch step {
 	case 1:
-		hint = " Enter — підтвердити · r — надіслати код ще раз (SMS) · Esc — назад "
+		hint = " Enter — підтвердити · r — код ще раз · Backspace — змінити номер · Esc — назад "
 	case 2:
-		hint = " Tab — прізвище · Enter — створити акаунт · Esc — назад "
+		hint = " Tab — прізвище · Enter — створити акаунт · Backspace — назад · Esc — вийти "
+	case 3:
+		hint = " Enter — підтвердити · Backspace — почати з номера · Esc — назад "
 	case 4:
 		hint = " Enter — назад до меню "
 	}
@@ -270,6 +272,17 @@ func (v *loginView) OnKey(k tui.Key) {
 		v.sendSMS()
 		return
 	}
+	// Backspace on an empty field walks back to phone entry instead of
+	// trapping the user: wrong number is the most common reason to go back.
+	if k.Type == tui.KeyBackspace && step >= 1 && step <= 3 {
+		v.mu.Lock()
+		empty := v.input.String() == "" && v.last.String() == ""
+		v.mu.Unlock()
+		if empty {
+			v.backToPhone("змініть номер і запросіть код знову")
+			return
+		}
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if step != 2 {
@@ -296,6 +309,40 @@ func (v *loginView) OnKey(k tui.Key) {
 			v.input.Key(k)
 		}
 	}
+}
+
+// backToPhone drops the wizard back to the phone-number step, keeping the
+// last phone so the user edits instead of retyping. Used for explicit
+// Backspace navigation and when the core lost its in-memory codeHash
+// (e.g. after a restart) and can no longer resend or verify a code.
+func (v *loginView) backToPhone(msg string) {
+	v.mu.Lock()
+	v.step = 0
+	v.waiting = false
+	v.signed = false
+	v.resent = 0
+	v.msg = msg
+	v.err = ""
+	v.input.Reset()
+	v.input.Mask = 0
+	v.input.Title = " Номер телефону "
+	v.input.Placeholder = "+380 50 123 4567"
+	if v.phone != "" {
+		v.input.Set(v.phone)
+	}
+	v.last.Reset()
+	v.lastOn = false
+	v.mu.Unlock()
+	v.c.app.Wake()
+}
+
+// isCodeHashGone reports the core error meaning its in-memory login state
+// (phone code hash) vanished — typically a core restart mid-login.
+func isCodeHashGone(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "ще не запитувався")
 }
 
 // fail records an error for the status line.
@@ -362,6 +409,10 @@ func (v *loginView) submit() {
 		v.goCall(func(cl *daemonClient) error { return cl.submitCode(code) }, func(err error) {
 			if err == nil {
 				v.finishSign()
+				return
+			}
+			if isCodeHashGone(err) {
+				v.backToPhone("ядро перезапустилось і забуло запит — введіть номер ще раз")
 				return
 			}
 			if isSignupNeeded(err) {
@@ -482,6 +533,10 @@ func (v *loginView) resend() {
 	v.mu.Unlock()
 	v.c.app.Wake()
 	v.goCall(func(cl *daemonClient) error { return cl.resendCode() }, func(err error) {
+		if err != nil && isCodeHashGone(err) {
+			v.backToPhone("ядро перезапустилось і забуло запит — введіть номер ще раз")
+			return
+		}
 		v.mu.Lock()
 		v.waiting = false
 		if err != nil {
@@ -507,7 +562,7 @@ func (v *loginView) finishSign() {
 		v.mu.Lock()
 		v.waiting = false
 		if ok {
-			v.step = 3
+			v.step = 4
 			v.signed = true
 			v.msg = ""
 			v.err = ""
