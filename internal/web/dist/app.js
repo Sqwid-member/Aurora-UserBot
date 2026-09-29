@@ -490,6 +490,7 @@
                 : `<button class="btn btn-sm btn-primary" data-act="start" data-name="${esc(p.name)}">Запустити</button>`
               }
               <button class="btn btn-sm" data-act="restart" data-name="${esc(p.name)}">Перезапуск</button>
+              ${p.has_settings ? `<button class="btn btn-sm" data-settings="${esc(p.name)}">Налаштування</button>` : ''}
               <button class="btn btn-sm btn-danger" data-act="uninstall" data-name="${esc(p.name)}">Видалити</button>
             </div>
           </div>
@@ -541,6 +542,115 @@
       toast('Помилка', err.message, 'error');
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  // ---------- Plugin Settings Form ----------
+  let PS_NAME = '';
+
+  async function openPluginSettings(name) {
+    PS_NAME = name;
+    $('#ps-title').textContent = `Налаштування: ${name}`;
+    const box = $('#ps-fields');
+    if (box) box.innerHTML = '<p class="auth-lead">Завантаження…</p>';
+    openModal('#modal-plugin-settings');
+    try {
+      const data = await api(`/api/plugins/${encodeURIComponent(name)}/settings`);
+      renderSettingsForm(data.fields || []);
+    } catch (err) {
+      if (box) box.innerHTML = `<div class="auth-status err">${esc(err.message || 'Не вдалося завантажити')}</div>`;
+    }
+  }
+
+  function settingFieldHTML(f) {
+    const fld = f.field || {};
+    const val = f.value;
+    const badge = f.stored ? '' : ' <span class="badge">дефолт</span>';
+    const hint = fld.description ? `<div class="form-help">${esc(fld.description)}</div>` : '';
+    const attrs = `data-ps-key="${esc(fld.key)}" data-ps-type="${esc(fld.type)}"`;
+    switch (fld.type) {
+      case 'bool':
+        return `<div class="form-group"><label class="md3-switch">`
+          + `<input type="checkbox" ${attrs} ${val ? 'checked' : ''}>`
+          + `<span class="md3-switch-track"><span class="md3-switch-thumb"></span></span>`
+          + `<span class="md3-switch-label">${esc(fld.title || fld.key)}${badge}</span></label>${hint}</div>`;
+      case 'number': {
+        const min = fld.min != null ? ` min="${fld.min}"` : '';
+        const max = fld.max != null ? ` max="${fld.max}"` : '';
+        const v = val == null ? '' : String(val);
+        return `<div class="form-group"><label class="form-label">${esc(fld.title || fld.key)}${badge}</label>`
+          + `<input type="number" class="form-input" ${attrs} value="${esc(v)}"${min}${max} step="any">${hint}</div>`;
+      }
+      case 'select': {
+        const opts = (fld.options || []).map((o) =>
+          `<option value="${esc(o.value)}"${String(val) === String(o.value) ? ' selected' : ''}>${esc(o.label || o.value)}</option>`
+        ).join('');
+        return `<div class="form-group"><label class="form-label">${esc(fld.title || fld.key)}${badge}</label>`
+          + `<select class="form-select" ${attrs}>${opts}</select>${hint}</div>`;
+      }
+      case 'password':
+        return `<div class="form-group"><label class="form-label">${esc(fld.title || fld.key)}${badge}</label>`
+          + `<input type="password" class="form-input" ${attrs} value="${esc(val || '')}" placeholder="${esc(fld.placeholder || '')}" autocomplete="off">${hint}</div>`;
+      default:
+        return `<div class="form-group"><label class="form-label">${esc(fld.title || fld.key)}${badge}</label>`
+          + `<input type="text" class="form-input" ${attrs} value="${esc(val || '')}" placeholder="${esc(fld.placeholder || '')}">${hint}</div>`;
+    }
+  }
+
+  function renderSettingsForm(fields) {
+    const box = $('#ps-fields');
+    if (!box) return;
+    if (!fields.length) {
+      box.innerHTML = '<p class="auth-lead">У цього плагіна немає налаштувань.</p>';
+      return;
+    }
+    box.innerHTML = fields.map(settingFieldHTML).join('');
+  }
+
+  function collectSettings() {
+    const values = {};
+    $$('#ps-fields [data-ps-key]').forEach((el) => {
+      const k = el.dataset.psKey, t = el.dataset.psType;
+      if (t === 'bool') values[k] = el.checked;
+      else if (t === 'number') {
+        const v = (el.value || '').trim();
+        if (v !== '' && !Number.isNaN(Number(v))) values[k] = Number(v);
+      } else values[k] = el.value;
+    });
+    return values;
+  }
+
+  $('#plugins-container')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-settings]');
+    if (btn) openPluginSettings(btn.dataset.settings);
+  });
+
+  $('#btn-ps-save')?.addEventListener('click', async () => {
+    if (!PS_NAME) return;
+    const btn = $('#btn-ps-save');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api(`/api/plugins/${encodeURIComponent(PS_NAME)}/settings`, {
+        method: 'POST', body: JSON.stringify({ values: collectSettings() }),
+      });
+      renderSettingsForm(res.fields || []);
+      toast('Налаштування', 'Збережено. Плагін отримав подію settings.changed.', 'ok');
+    } catch (err) {
+      toast('Помилка збереження', err.message, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $('#btn-ps-reset')?.addEventListener('click', async () => {
+    if (!PS_NAME || !confirm(`Скинути налаштування «${PS_NAME}» до значень за замовчуванням?`)) return;
+    try {
+      await api(`/api/plugins/${encodeURIComponent(PS_NAME)}/settings`, { method: 'DELETE' });
+      const data = await api(`/api/plugins/${encodeURIComponent(PS_NAME)}/settings`);
+      renderSettingsForm(data.fields || []);
+      toast('Налаштування', 'Скинуто до дефолтів.', 'ok');
+    } catch (err) {
+      toast('Помилка скидання', err.message, 'error');
     }
   });
 

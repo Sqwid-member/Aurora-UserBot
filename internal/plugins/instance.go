@@ -512,8 +512,10 @@ type Stats struct {
 	LastError   string   `json:"last_error,omitempty"`
 	Subscribed  []string `json:"events,omitempty"`
 	Commands    []string `json:"commands,omitempty"`
-	Permissions any      `json:"permissions,omitempty"`
-	Path        string   `json:"path"`
+	// HasSettings reports whether the plugin declares a settings form.
+	HasSettings bool   `json:"has_settings,omitempty"`
+	Permissions any    `json:"permissions,omitempty"`
+	Path        string `json:"path"`
 }
 
 // Stats returns a snapshot of the instance.
@@ -551,6 +553,7 @@ func (p *Instance) Stats() Stats {
 	for _, c := range p.Manifest.Commands {
 		s.Commands = append(s.Commands, c.Name)
 	}
+	s.HasSettings = len(p.Manifest.Settings) > 0
 	return s
 }
 

@@ -439,6 +439,21 @@ func (a *App) SaveConfig(c config.Config) error {
 // PluginStats implements web.Backend.
 func (a *App) PluginStats() []plugins.Stats { return a.Plugins.Stats() }
 
+// PluginSettings implements web.Backend.
+func (a *App) PluginSettings(name string) ([]plugins.SettingValue, error) {
+	return a.Plugins.PluginSettings(name)
+}
+
+// SavePluginSettings implements web.Backend.
+func (a *App) SavePluginSettings(ctx context.Context, name string, values map[string]any) ([]plugins.SettingValue, error) {
+	return a.Plugins.SetPluginSettings(name, values)
+}
+
+// ResetPluginSettings implements web.Backend.
+func (a *App) ResetPluginSettings(name string) error {
+	return a.Plugins.ResetPluginSettings(name)
+}
+
 // Commands implements web.Backend.
 func (a *App) Commands() []plugins.CommandSpec { return a.Plugins.Commands() }
 

@@ -66,6 +66,10 @@ type Backend interface {
 	// PluginStats returns a snapshot of every installed plugin.
 	PluginStats() []plugins.Stats
 	PluginAction(ctx context.Context, name, action string) (string, error)
+	// PluginSettings returns the settings form schema with values.
+	PluginSettings(name string) ([]plugins.SettingValue, error)
+	SavePluginSettings(ctx context.Context, name string, values map[string]any) ([]plugins.SettingValue, error)
+	ResetPluginSettings(name string) error
 	PluginInstall(ctx context.Context, source, name string) (string, error)
 	PluginUninstall(name string) error
 	Commands() []plugins.CommandSpec
@@ -225,6 +229,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/plugins", s.handlePlugins)
 	mux.HandleFunc("POST /api/plugins/{name}/{action}", s.handlePluginAction)
+	mux.HandleFunc("GET /api/plugins/{name}/settings", s.handlePluginSettings)
+	mux.HandleFunc("POST /api/plugins/{name}/settings", s.handlePluginSettingsSave)
+	mux.HandleFunc("DELETE /api/plugins/{name}/settings", s.handlePluginSettingsReset)
 	mux.HandleFunc("POST /api/plugins/install", s.handlePluginInstall)
 	mux.HandleFunc("POST /api/plugins/{name}/uninstall", s.handlePluginUninstall)
 	mux.HandleFunc("GET /api/commands", s.handleCommands)
@@ -518,6 +525,58 @@ func (s *Server) handlePluginAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg})
+}
+
+// handlePluginSettings returns the settings form schema with values.
+func (s *Server) handlePluginSettings(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	values, err := s.opts.Backend.PluginSettings(name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if values == nil {
+		values = []plugins.SettingValue{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fields": values})
+}
+
+// handlePluginSettingsSave validates and stores settings form values.
+func (s *Server) handlePluginSettingsSave(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	name := r.PathValue("name")
+	var req struct {
+		Values map[string]any `json:"values"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Values == nil {
+		writeErr(w, http.StatusBadRequest, "values are required")
+		return
+	}
+	values, err := s.opts.Backend.SavePluginSettings(r.Context(), name, req.Values)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "fields": values})
+}
+
+// handlePluginSettingsReset drops stored values back to schema defaults.
+func (s *Server) handlePluginSettingsReset(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	if err := s.opts.Backend.ResetPluginSettings(r.PathValue("name")); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handlePluginInstall(w http.ResponseWriter, r *http.Request) {

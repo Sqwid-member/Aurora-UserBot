@@ -55,6 +55,10 @@ type Manifest struct {
 	Events []string `json:"events,omitempty"`
 	// Commands declares chat/panel commands the plugin answers to.
 	Commands []CommandSpec `json:"commands,omitempty"`
+	// Settings declares the graphical settings form the control panel
+	// renders for this plugin. Values live in the plugin-private settings
+	// namespace and are readable via settings.get.
+	Settings []SettingField `json:"settings,omitempty"`
 	// RPCMethods declares extra methods the host may call on the plugin.
 	RPCMethods []string `json:"rpc_methods,omitempty"`
 	// Permissions is the capability allowlist.
@@ -87,6 +91,51 @@ type CommandSpec struct {
 	Aliases     []string `json:"aliases,omitempty"`
 	// InChat allows the command to be triggered by typing it in a chat.
 	InChat bool `json:"in_chat,omitempty"`
+}
+
+// Setting field types rendered by the control panel.
+const (
+	SettingText     = "text"
+	SettingPassword = "password"
+	SettingNumber   = "number"
+	SettingBool     = "bool"
+	SettingSelect   = "select"
+)
+
+// Setting limits guard the panel and the stored state.
+const (
+	MaxSettingFields = 64
+	MaxSettingKeyLen = 64
+	MaxSettingText   = 4096
+)
+
+var settingKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
+
+// SettingOption is one entry of a select field.
+type SettingOption struct {
+	Value string `json:"value"`
+	Label string `json:"label,omitempty"`
+}
+
+// SettingField describes one row of a plugin's graphical settings form.
+type SettingField struct {
+	// Key is the settings.get/settings.set key.
+	Key string `json:"key"`
+	// Type is one of text, password, number, bool, select.
+	Type string `json:"type"`
+	// Title is the human-readable label shown in the panel.
+	Title string `json:"title,omitempty"`
+	// Description is a short hint under the control.
+	Description string `json:"description,omitempty"`
+	// Placeholder is shown inside empty text inputs.
+	Placeholder string `json:"placeholder,omitempty"`
+	// Default is returned when nothing is stored yet (must match Type).
+	Default any `json:"default,omitempty"`
+	// Options lists allowed values for select fields.
+	Options []SettingOption `json:"options,omitempty"`
+	// Min/Max bound number fields.
+	Min *float64 `json:"min,omitempty"`
+	Max *float64 `json:"max,omitempty"`
 }
 
 // Permissions is the capability allowlist enforced by the host API.
@@ -197,6 +246,9 @@ func (m *Manifest) Validate(dir string) error {
 	}
 	m.Events = normalize(m.Events)
 	m.Commands = dedupeCommands(m.Commands)
+	if err := validateSettings(m.Settings); err != nil {
+		return err
+	}
 	m.RPCMethods = dedupeStrings(m.RPCMethods)
 	m.Limits.clamp()
 	m.Permissions.TG = normalize(m.Permissions.TG)
@@ -326,6 +378,108 @@ func normalize(in []string) []string {
 }
 
 func dedupeStrings(in []string) []string { return normalize(in) }
+
+// validateSettings checks the graphical settings schema: known types,
+// safe keys, sane select options and type-matching defaults.
+func validateSettings(fields []SettingField) error {
+	if len(fields) > MaxSettingFields {
+		return fmt.Errorf("plugins: too many settings fields (%d, max %d)", len(fields), MaxSettingFields)
+	}
+	seen := map[string]bool{}
+	for i, f := range fields {
+		if !settingKeyRe.MatchString(f.Key) {
+			return fmt.Errorf("plugins: settings[%d]: invalid key %q", i, f.Key)
+		}
+		if seen[f.Key] {
+			return fmt.Errorf("plugins: settings[%d]: duplicate key %q", i, f.Key)
+		}
+		seen[f.Key] = true
+		switch f.Type {
+		case SettingText, SettingPassword:
+			if s, ok := f.Default.(string); ok && len(s) > MaxSettingText {
+				return fmt.Errorf("plugins: settings[%d]: default too long", i)
+			} else if f.Default != nil && !ok {
+				return fmt.Errorf("plugins: settings[%d]: default must be a string", i)
+			}
+		case SettingNumber:
+			if f.Default != nil {
+				if _, ok := toFloat(f.Default); !ok {
+					return fmt.Errorf("plugins: settings[%d]: default must be a number", i)
+				}
+			}
+			if f.Min != nil && f.Max != nil && *f.Min > *f.Max {
+				return fmt.Errorf("plugins: settings[%d]: min > max", i)
+			}
+		case SettingBool:
+			if f.Default != nil {
+				if _, ok := toBool(f.Default); !ok {
+					return fmt.Errorf("plugins: settings[%d]: default must be a boolean", i)
+				}
+			}
+		case SettingSelect:
+			if len(f.Options) == 0 {
+				return fmt.Errorf("plugins: settings[%d]: select needs options", i)
+			}
+			seenOpt := map[string]bool{}
+			for _, o := range f.Options {
+				if strings.TrimSpace(o.Value) == "" || len(o.Value) > MaxSettingText {
+					return fmt.Errorf("plugins: settings[%d]: bad select option value", i)
+				}
+				if seenOpt[o.Value] {
+					return fmt.Errorf("plugins: settings[%d]: duplicate select option %q", i, o.Value)
+				}
+				seenOpt[o.Value] = true
+			}
+			if f.Default != nil {
+				def, ok := f.Default.(string)
+				if !ok || !seenOpt[def] {
+					return fmt.Errorf("plugins: settings[%d]: default must be one of the options", i)
+				}
+			}
+		default:
+			return fmt.Errorf("plugins: settings[%d]: unknown type %q", i, f.Type)
+		}
+	}
+	return nil
+}
+
+// toFloat coerces JSON numbers (and numeric strings) to float64.
+func toFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	case string:
+		var f float64
+		_, err := fmt.Sscanf(strings.TrimSpace(n), "%f", &f)
+		return f, err == nil
+	}
+	return 0, false
+}
+
+// toBool coerces JSON booleans (and common string forms) to bool.
+func toBool(v any) (bool, bool) {
+	switch b := v.(type) {
+	case bool:
+		return b, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(b)) {
+		case "1", "true", "yes", "on":
+			return true, true
+		case "0", "false", "no", "off", "":
+			return false, true
+		}
+	}
+	return false, false
+}
 
 func dedupeCommands(in []CommandSpec) []CommandSpec {
 	seen := map[string]bool{}

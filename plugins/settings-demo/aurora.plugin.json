@@ -1,0 +1,67 @@
+{
+  "name": "settings-demo",
+  "version": "1.0.0",
+  "description": "Демо графічних налаштувань: префікс, регістр і ліміт довжини для /demo. Відкрийте «Налаштування» на картці плагіна.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["example", "python", "settings"],
+  "runtime": {
+    "command": "python3",
+    "args": ["main.py"]
+  },
+  "events": ["message.new", "core.start", "settings.changed"],
+  "commands": [
+    {
+      "name": "demo",
+      "usage": "demo <текст>",
+      "description": "Форматує текст за налаштуваннями плагіна",
+      "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "reply_prefix",
+      "type": "text",
+      "title": "Префікс відповіді",
+      "description": "Додається перед кожною відповіддю /demo.",
+      "placeholder": "🤖",
+      "default": "🤖"
+    },
+    {
+      "key": "mode",
+      "type": "select",
+      "title": "Режим тексту",
+      "description": "Як перетворювати текст.",
+      "options": [
+        {"value": "normal", "label": "Як є"},
+        {"value": "shout", "label": "КАПСОМ"},
+        {"value": "whisper", "label": "тихо (малими)"}
+      ],
+      "default": "normal"
+    },
+    {
+      "key": "max_len",
+      "type": "number",
+      "title": "Макс. довжина",
+      "description": "Довші відповіді обрізаються.",
+      "min": 1,
+      "max": 500,
+      "default": 200
+    },
+    {
+      "key": "private_only",
+      "type": "bool",
+      "title": "Тільки приватні чати",
+      "description": "Ігнорувати /demo в групах і каналах.",
+      "default": true
+    }
+  ],
+  "permissions": {
+    "tg": ["send"]
+  },
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}
