@@ -166,6 +166,7 @@ newline-delimited JSON-RPC 2.0 через `stdin`/`stdout`. Ніяких спі�
 | `kv.keys` | `{key}` (префікс) | `{keys:[...]}` | — |
 | `settings.get` | `{key}` | `{value, found}` | — |
 | `settings.set` | `{key, value}` | `{}` | — |
+| `settings.schema` | `{fields[], mode?}` | `{ok, fields}` | — |
 | `config.get` | `{key}` ( dotted path ) | `{value, found}` | `config` |
 | `tg.get_me` | — | обліковий запис | — |
 | `tg.send` | `{peer, text, reply_to?, silent?, no_preview?, schedule?, parse_mode?}` | `{id, peer_id, date, text}` | `tg: ["send"]` |
@@ -198,6 +199,7 @@ newline-delimited JSON-RPC 2.0 через `stdin`/`stdout`. Ніяких спі�
 | `message.edited` | редагування |
 | `message.deleted` | `{peer_id, message_ids[], channel}` |
 | `user.typing` | `{user_id, peer_id, action}` |
+| `settings.changed` | `{plugin, keys[]}` — налаштування змінено з панелі |
 | `chat.action` | набір, прочитання, зміна назви, статус |
 | `command.received` | команда з панелі або CLI |
 

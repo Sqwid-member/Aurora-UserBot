@@ -169,6 +169,108 @@ func TestPluginSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDynamicSchemaMergeReplace(t *testing.T) {
+	h := newSettingsHost(t)
+
+	extra := []SettingField{
+		{Key: "dyn", Type: SettingText, Title: "Dyn", Default: "d"},
+		{Key: "title", Type: SettingText, Title: "Overridden", Default: "o"},
+	}
+	eff, err := h.SetDynamicSchema("settest", extra, "merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eff) != 6 {
+		t.Fatalf("effective = %d fields, want 6 (5 manifest + 1 new)", len(eff))
+	}
+	if eff[0].Key != "title" || eff[0].Title != "Overridden" {
+		t.Errorf("manifest field not overridden in place: %+v", eff[0])
+	}
+	if eff[5].Key != "dyn" {
+		t.Errorf("new dynamic field not appended: %+v", eff[5])
+	}
+
+	// Unknown mode and unknown plugin fail.
+	if _, err := h.SetDynamicSchema("settest", extra, "bogus"); err == nil {
+		t.Error("expected error for bad mode")
+	}
+	if _, err := h.SetDynamicSchema("nope", extra, "merge"); err == nil {
+		t.Error("expected error for unknown plugin")
+	}
+
+	// Replace clears back to manifest.
+	eff, err = h.SetDynamicSchema("settest", nil, "replace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eff) != 5 {
+		t.Fatalf("after clear: %d fields, want 5", len(eff))
+	}
+
+	// Validation applies to the merged whole.
+	many := make([]SettingField, MaxSettingFields)
+	for i := range many {
+		many[i] = SettingField{Key: "x" + string(rune('a'+i/26)) + string(rune('a'+i%26)), Type: SettingText}
+	}
+	if _, err := h.SetDynamicSchema("settest", many, "merge"); err == nil {
+		t.Error("expected field-cap error")
+	}
+	if _, err := h.SetDynamicSchema("settest", []SettingField{{Key: "bad!", Type: SettingText}}, "merge"); err == nil {
+		t.Error("expected key error")
+	}
+}
+
+func TestDynamicSchemaValuesAndReset(t *testing.T) {
+	h := newSettingsHost(t)
+
+	if _, err := h.SetDynamicSchema("settest",
+		[]SettingField{{Key: "level", Type: SettingNumber, Min: floatPtr(0), Max: floatPtr(9), Default: 1}},
+		"merge"); err != nil {
+		t.Fatal(err)
+	}
+	fields, err := h.PluginSettings("settest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, f := range fields {
+		if f.Field.Key == "level" {
+			found = true
+			n, ok := toFloat(f.Value)
+			if f.Stored || !ok || n != 1 {
+				t.Errorf("dynamic default not served: %+v", f)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("dynamic field missing from settings view")
+	}
+
+	if _, err := h.SetPluginSettings("settest", map[string]any{"level": 7}); err != nil {
+		t.Fatalf("set dynamic value: %v", err)
+	}
+	// Reset clears the value but keeps the dynamic schema.
+	if err := h.ResetPluginSettings("settest"); err != nil {
+		t.Fatal(err)
+	}
+	after, err := h.PluginSettings("settest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := false
+	for _, f := range after {
+		if f.Field.Key == "level" {
+			kept = true
+			if f.Stored {
+				t.Error("dynamic value survived reset")
+			}
+		}
+	}
+	if !kept {
+		t.Error("dynamic schema lost on reset")
+	}
+}
+
 func TestPluginSettingsNoSchema(t *testing.T) {
 	h := newSettingsHost(t)
 	dir := filepath.Join(h.Root(), "plain")

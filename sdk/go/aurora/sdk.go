@@ -319,6 +319,34 @@ func (p *Plugin) SetSetting(key string, value any) error {
 	return p.call("settings.set", map[string]any{"key": key, "value": value}, nil)
 }
 
+// SettingField mirrors the host settings-schema field (stdlib-only copy,
+// same JSON shape as the manifest "settings" entries).
+type SettingField struct {
+	Key         string          `json:"key"`
+	Type        string          `json:"type"`
+	Title       string          `json:"title,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Placeholder string          `json:"placeholder,omitempty"`
+	Default     any             `json:"default,omitempty"`
+	Options     []SettingOption `json:"options,omitempty"`
+	Min         *float64        `json:"min,omitempty"`
+	Max         *float64        `json:"max,omitempty"`
+}
+
+// SettingOption is one entry of a select field.
+type SettingOption struct {
+	Value string `json:"value"`
+	Label string `json:"label,omitempty"`
+}
+
+// SetSettingsSchema registers runtime settings-form fields. Mode "merge"
+// (default) unions with previously registered fields, "replace" swaps them;
+// an empty list with "replace" clears back to the manifest schema.
+// The host validates and returns the effective schema.
+func (p *Plugin) SetSettingsSchema(fields []SettingField, mode string) error {
+	return p.call("settings.schema", map[string]any{"fields": fields, "mode": mode}, nil)
+}
+
 // Send sends a text message. peer accepts a username, phone number, numeric
 // ID or any t.me link.
 func (p *Plugin) Send(peer, text string, opts SendOptions) (Message, error) {

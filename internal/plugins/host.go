@@ -439,7 +439,10 @@ func (h *Host) Stats() []Stats {
 	out := make([]Stats, 0, len(names))
 	for _, n := range names {
 		if inst, ok := h.Get(n); ok {
-			out = append(out, inst.Stats())
+			st := inst.Stats()
+			// The form also exists when only runtime-registered fields do.
+			st.HasSettings = len(h.effectiveSettings(inst)) > 0
+			out = append(out, st)
 		}
 	}
 	return out
@@ -493,7 +496,7 @@ func auroraFields(s string) []string {
 // HostAPIMethods lists the RPC methods a plugin may call.
 var HostAPIMethods = []string{
 	"log", "kv.get", "kv.set", "kv.delete", "kv.keys",
-	"settings.get", "settings.set",
+	"settings.get", "settings.set", "settings.schema",
 	"config.get", "config.set",
 	"tg.get_me", "tg.send", "tg.history", "tg.resolve",
 	"ui.notify", "http.request", "event.subscribe", "core.info",

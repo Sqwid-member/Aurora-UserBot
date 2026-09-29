@@ -13,14 +13,29 @@ Answers to "/demo <text>" in chat and to the "demo" panel command.
 import json
 import sys
 
-SETTINGS_KEYS = ("reply_prefix", "mode", "max_len", "private_only")
+SETTINGS_KEYS = ("reply_prefix", "mode", "max_len", "private_only", "dynamic_note")
 
 DEFAULTS = {
     "reply_prefix": "\U0001F916",
     "mode": "normal",
     "max_len": 200,
     "private_only": True,
+    "dynamic_note": "",
 }
+
+# A form field registered at runtime (not from the manifest): proves that
+# a plugin can build its own settings menu from code. Mode "merge" keeps
+# previously registered fields; re-sending is idempotent.
+DYNAMIC_SCHEMA = [
+    {
+        "key": "dynamic_note",
+        "type": "text",
+        "title": "Нотатка (рантайм)",
+        "description": "Це поле створив сам плагін через settings.schema.",
+        "placeholder": "з'явилось з коду, не з маніфеста",
+        "default": "",
+    }
+]
 
 _state = dict(DEFAULTS)
 _seq = [0]
@@ -60,6 +75,10 @@ def refresh_settings():
     """Ask the host for every schema key; answers arrive as responses."""
     for key in SETTINGS_KEYS:
         _pending[call("settings.get", {"key": key})] = key
+
+
+def register_schema():
+    call("settings.schema", {"fields": DYNAMIC_SCHEMA, "mode": "merge"})
 
 
 def coerce(key, value):
@@ -138,6 +157,7 @@ def main():
             respond(msg, {"ok": True})
         elif method == "plugin.load":
             respond(msg, {"ok": True})
+            register_schema()
             refresh_settings()
         elif method == "plugin.unload":
             respond(msg, {"ok": True})

@@ -120,6 +120,21 @@ func (h *Host) bindAPI(p *Instance) {
 		return map[string]any{"ok": true}, nil
 	})
 
+	c.Handle("settings.schema", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
+		var req struct {
+			Fields []SettingField `json:"fields"`
+			Mode   string         `json:"mode"`
+		}
+		if err := decode(raw, &req); err != nil {
+			return nil, err
+		}
+		effective, err := h.SetDynamicSchema(m.Name, req.Fields, req.Mode)
+		if err != nil {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "%v", err)
+		}
+		return map[string]any{"ok": true, "fields": effective}, nil
+	})
+
 	// ---- config (opt-in) ----------------------------------------------
 	c.Handle("config.get", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
 		if !m.Permissions.Config {
