@@ -52,6 +52,8 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   plugin restart <ім'я>
   plugin install <git-url> [ім'я]
   plugin remove <ім'я>
+  plugin settings <ім'я> [к=зн...]
+                      показати/зберегти налаштування плагіна
 	session             інформація про локальну сесію
   session export      надрукувати StringSession (Telethon/Pyrogram)
   device [--save]     показати/зберегти зліпок пристрою для маскування входу
@@ -406,7 +408,9 @@ func cmdPlugins(layout paths.Layout, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = a.Plugins.Discover()
+	// Register on-disk plugins without starting them: Discover alone
+	// leaves the host empty, so offline ls/start/settings saw nothing.
+	_ = a.Plugins.EnsureInstalled()
 
 	sub := "ls"
 	if len(args) > 0 {
@@ -475,6 +479,53 @@ func cmdPlugins(layout paths.Layout, args []string) error {
 			return err
 		}
 		fmt.Printf("✓ плагін %s видалено\n", args[0])
+		return nil
+
+	case "settings":
+		if len(args) == 0 {
+			return errors.New("використання: aurora plugin settings <ім'я> [ключ=значення ...]")
+		}
+		name := args[0]
+		if len(args) == 1 {
+			fields, err := a.Plugins.PluginSettings(name)
+			if err != nil {
+				return err
+			}
+			if len(fields) == 0 {
+				fmt.Printf("у плагіна %s немає налаштувань\n", name)
+				return nil
+			}
+			for _, f := range fields {
+				mark := ""
+				if !f.Stored {
+					mark = " (дефолт)"
+				}
+				title := f.Field.Title
+				if title == "" {
+					title = f.Field.Key
+				}
+				fmt.Printf("%-20s = %v%s\n  %s\n", f.Field.Key, f.Value, mark, title)
+			}
+			return nil
+		}
+		values := make(map[string]any, len(args)-1)
+		for _, kv := range args[1:] {
+			k, v, ok := strings.Cut(kv, "=")
+			if !ok || strings.TrimSpace(k) == "" {
+				return fmt.Errorf("очікується ключ=значення, отримано %q", kv)
+			}
+			values[strings.TrimSpace(k)] = v
+		}
+		saved, err := a.Plugins.SetPluginSettings(name, values)
+		if err != nil {
+			return err
+		}
+		// The KV store flushes with a debounce; an offline CLI exits
+		// immediately, so persist synchronously or the write is lost.
+		if err := a.KV.Flush(); err != nil {
+			return fmt.Errorf("збережено в пам'яті, але flush на диск не вдався: %w", err)
+		}
+		fmt.Printf("✓ збережено (%d полів)\n", len(saved))
 		return nil
 
 	default:

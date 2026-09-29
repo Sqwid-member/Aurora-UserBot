@@ -19,12 +19,20 @@
   let timers = null;
 
   // ---------- API Client ----------
-  // Save token from URL or injected global
+  // Save token from URL or injected global, then scrub it from the
+  // address bar: it has done its job (cookie + localStorage below), and
+  // must not linger in history, bookmarks or pasted screenshots.
   try {
     const urlTok = new URLSearchParams(window.location.search).get("token") || window.__AURORA_TOKEN__;
     if (urlTok) {
       localStorage.setItem("aurora_token", urlTok);
       document.cookie = "aurora_token=" + encodeURIComponent(urlTok) + "; path=/; max-age=31536000; SameSite=Lax";
+    }
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("token")) {
+      url.searchParams.delete("token");
+      const rest = url.searchParams.toString();
+      window.history.replaceState(null, "", url.pathname + (rest ? "?" + rest : "") + url.hash);
     }
   } catch (e) {}
 
@@ -451,6 +459,9 @@
       const isEnabledForAcc = !activeAcc || !activeAcc.enabled_plugins || activeAcc.enabled_plugins.includes(p.name);
       const tgCaps = (perms.tg || []).map(c => `<span class="cap-chip">tg:${esc(c)}</span>`).join('');
       const netCap = perms.net ? '<span class="cap-chip">net:http</span>' : '';
+      const wildCap = (p.events || []).includes('*')
+        ? '<span class="cap-chip" title="Плагін отримує ВСІ події, включно з текстом усіх повідомлень" style="border-color:var(--md-error); color:var(--md-error);">читає все</span>'
+        : '';
       const memMB = p.memory_kb ? Math.round(p.memory_kb / 1024) : 0;
       const isRunning = p.state === 'running';
 
@@ -469,6 +480,7 @@
               <span class="cap-chip">v${esc(p.version || '1.0.0')}</span>
               ${tgCaps}
               ${netCap}
+              ${wildCap}
             </div>
             <div class="plugin-acc-row">
               <span style="font-size:12px; color:var(--md-text-secondary); display:flex; align-items:center; gap:6px;">

@@ -33,6 +33,12 @@ const ProtocolVersion = 1
 // MaxLineSize guards against a runaway peer flooding memory with one line.
 const MaxLineSize = 8 << 20 // 8 MiB
 
+// maxInflightInvokes caps how many peer messages are handled concurrently.
+// A malicious (or wedged) plugin flooding the pipe would otherwise spawn an
+// unbounded number of goroutines; past the cap, notifications are dropped
+// and requests get an honest busy error instead of hanging.
+const maxInflightInvokes = 256
+
 // Standard JSON-RPC error codes.
 const (
 	CodeParseError     = -32700
@@ -44,6 +50,8 @@ const (
 	CodeForbidden = -32001
 	// CodeUnavailable is Aurora-specific: a required service is not ready.
 	CodeUnavailable = -32002
+	// CodeServerError is Aurora-specific: the host is saturated, retry later.
+	CodeServerError = -32000
 )
 
 // Message is a JSON-RPC 2.0 frame. A frame with an ID is a request, without
@@ -89,6 +97,7 @@ type Conn struct {
 	wm sync.Mutex
 
 	seq       atomic.Int64
+	inflight  atomic.Int32
 	pending   map[string]chan Message
 	pendingMu sync.Mutex
 
@@ -208,16 +217,35 @@ func (c *Conn) route(ctx context.Context, msg Message) {
 		return
 	}
 
-	// A request or notification from the peer.
+	// A request or notification from the peer. Each one runs on its own
+	// goroutine, so cap the in-flight count: a flooding peer gets drops
+	// and busy errors instead of unlimited goroutines on this side.
+	if c.inflight.Add(1) > maxInflightInvokes {
+		c.inflight.Add(-1)
+		if msg.ID != nil {
+			_ = c.write(Message{
+				JSONRPC: "2.0",
+				ID:      msg.ID,
+				Error:   NewError(CodeServerError, "server busy, retry later"),
+			})
+		}
+		return
+	}
 	if msg.ID == nil {
-		go c.invoke(ctx, msg, nil)
+		go func() {
+			defer c.inflight.Add(-1)
+			c.invoke(ctx, msg, nil)
+		}()
 		return
 	}
 	// Reply off the read loop. If we wrote synchronously here, a peer that is
 	// slow to read would wedge this side completely: it would stop draining
 	// its input while blocked on its output, and the two would deadlock.
 	// JSON-RPC matches responses by id, so out-of-order replies are fine.
-	go c.invoke(ctx, msg, msg.ID)
+	go func() {
+		defer c.inflight.Add(-1)
+		c.invoke(ctx, msg, msg.ID)
+	}()
 }
 
 func (c *Conn) invoke(ctx context.Context, msg Message, id *json.RawMessage) {

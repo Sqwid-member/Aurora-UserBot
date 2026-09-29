@@ -86,6 +86,28 @@ func TestPathEscapeIsRejected(t *testing.T) {
 	}
 }
 
+func TestWrapperEscapeIsRejected(t *testing.T) {
+	cases := map[string]string{
+		"absolute wrapper": `{"name":"demo","runtime":{"command":"./demo","wrap":"/bin/sh"}}`,
+		"traversal":        `{"name":"demo","runtime":{"command":"./demo","wrap":"../evil"}}`,
+		"nested path":      `{"name":"demo","runtime":{"command":"./demo","wrap":"a/b"}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "demo")
+			writeManifest(t, dir, body)
+			if _, err := LoadManifest(dir); err == nil {
+				t.Fatalf("%s: expected an error", name)
+			}
+		})
+	}
+	dir := filepath.Join(t.TempDir(), "demo")
+	writeManifest(t, dir, `{"name":"demo","runtime":{"command":"./demo","wrap":"proot"}}`)
+	if _, err := LoadManifest(dir); err != nil {
+		t.Fatalf("bare wrapper must pass: %v", err)
+	}
+}
+
 func TestBadNameIsRejected(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Bad Name")
 	writeManifest(t, dir, `{"name":"Bad Name","runtime":{"command":"./x"}}`)

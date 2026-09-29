@@ -40,6 +40,7 @@ type Store struct {
 	closed  bool
 	flushCh chan struct{}
 	done    chan struct{}
+	wg      sync.WaitGroup
 	err     error
 }
 
@@ -70,7 +71,11 @@ func Open(path string) (*Store, error) {
 		}
 	}
 
-	go s.loop()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.loop()
+	}()
 	return s, nil
 }
 
@@ -91,7 +96,9 @@ func (s *Store) loop() {
 	}
 }
 
-// Close flushes and stops the background writer.
+// Close flushes and stops the background writer. It waits for the loop
+// goroutine to exit first: otherwise a racing Flush could recreate files
+// while the caller is removing the store directory.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -102,6 +109,7 @@ func (s *Store) Close() error {
 	s.mu.Unlock()
 
 	close(s.done)
+	s.wg.Wait()
 	return s.Flush()
 }
 

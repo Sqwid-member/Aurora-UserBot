@@ -60,6 +60,9 @@ func (h *Host) bindAPI(p *Instance) {
 	})
 
 	// ---- shared key-value store ---------------------------------------
+	// The "plugin:" namespace is reserved for plugin-private settings:
+	// without this, any plugin could read (or wipe) every other plugin's
+	// secrets with kv.get/kv.keys, bypassing the settings.get boundary.
 	c.Handle("kv.get", func(_ context.Context, raw json.RawMessage) (any, *ipc.Error) {
 		var req proto.KVRequest
 		if err := decode(raw, &req); err != nil {
@@ -67,6 +70,9 @@ func (h *Host) bindAPI(p *Instance) {
 		}
 		if req.Key == "" {
 			return nil, ipc.NewError(ipc.CodeInvalidParams, "key is required")
+		}
+		if isReservedKey(req.Key) {
+			return nil, ipc.NewError(ipc.CodeForbidden, "key namespace %q is reserved; use settings.*", settingsNS)
 		}
 		value, found := h.kv.GetRaw(req.Key)
 		return proto.KVResult{Value: value, Found: found}, nil
@@ -79,6 +85,9 @@ func (h *Host) bindAPI(p *Instance) {
 		if req.Key == "" {
 			return nil, ipc.NewError(ipc.CodeInvalidParams, "key is required")
 		}
+		if isReservedKey(req.Key) {
+			return nil, ipc.NewError(ipc.CodeForbidden, "key namespace %q is reserved; use settings.*", settingsNS)
+		}
 		if err := h.kv.Set(req.Key, req.Value); err != nil {
 			return nil, ipc.NewError(ipc.CodeInvalidParams, "%v", err)
 		}
@@ -89,6 +98,9 @@ func (h *Host) bindAPI(p *Instance) {
 		if err := decode(raw, &req); err != nil {
 			return nil, err
 		}
+		if isReservedKey(req.Key) {
+			return nil, ipc.NewError(ipc.CodeForbidden, "key namespace %q is reserved; use settings.*", settingsNS)
+		}
 		h.kv.Delete(req.Key)
 		return map[string]any{"ok": true}, nil
 	})
@@ -97,7 +109,19 @@ func (h *Host) bindAPI(p *Instance) {
 		if err := decode(raw, &req); err != nil {
 			return nil, err
 		}
-		return map[string]any{"keys": h.kv.Keys(req.Key)}, nil
+		if isReservedKey(req.Key) {
+			return nil, ipc.NewError(ipc.CodeForbidden, "key namespace %q is reserved; use settings.*", settingsNS)
+		}
+		keys := h.kv.Keys(req.Key)
+		// Defense in depth: an empty prefix lists everything, so strip the
+		// reserved namespace from results no matter what was asked.
+		visible := keys[:0]
+		for _, k := range keys {
+			if !isReservedKey(k) {
+				visible = append(visible, k)
+			}
+		}
+		return map[string]any{"keys": visible}, nil
 	})
 
 	// ---- plugin-private settings --------------------------------------

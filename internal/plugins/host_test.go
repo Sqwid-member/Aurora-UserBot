@@ -57,7 +57,7 @@ const testManifest = `{
   "language": "go",
   "runtime": {"command": "./testplugin"},
   "events": ["message.new", "core.start"],
-  "commands": [{"name": "ping", "aliases": ["p"]}],
+  "commands": [{"name": "ping", "aliases": ["p"]}, {"name": "kvprobe"}],
   "rpc_methods": [],
   "permissions": {"tg": ["send", "read"], "config": true}
 }`
@@ -181,6 +181,23 @@ func TestCommandRouting(t *testing.T) {
 	}
 }
 
+func TestEnsureInstalledRegistersOffline(t *testing.T) {
+	h, _ := newHost(t, &fakeServices{ready: true})
+	if _, ok := h.Get("testplugin"); ok {
+		t.Fatal("fresh host must not have instances")
+	}
+	if broken := h.EnsureInstalled(); len(broken) != 0 {
+		t.Fatalf("broken: %v", broken)
+	}
+	if _, ok := h.Get("testplugin"); !ok {
+		t.Fatal("discovered plugin was not registered")
+	}
+	// Idempotent: second run changes nothing and reports nothing.
+	if broken := h.EnsureInstalled(); len(broken) != 0 {
+		t.Fatalf("second run broken: %v", broken)
+	}
+}
+
 func TestEventDeliveryAndHostAPIFromPlugin(t *testing.T) {
 	svc := &fakeServices{ready: true}
 	h, store := newHost(t, svc)
@@ -213,6 +230,42 @@ func TestEventDeliveryAndHostAPIFromPlugin(t *testing.T) {
 	inst, _ := h.Get("testplugin")
 	if got := inst.Stats(); got.Events != 2 {
 		t.Errorf("delivered event counter = %d, want 2 (unsubscribed event must not count)", got.Events)
+	}
+}
+
+// TestKVReservedNamespaceBlocksExploit plays the attacker: a malicious
+// plugin tries to read, overwrite, delete and enumerate another plugin's
+// private settings straight through the shared kv.* API. Every attempt
+// must be refused — the settings.* boundary is the only way in.
+func TestKVReservedNamespaceBlocksExploit(t *testing.T) {
+	h, store := newHost(t, &fakeServices{ready: true})
+	ctx := context.Background()
+
+	if _, err := h.Install(filepath.Join(h.Root(), "testplugin")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Start(ctx, "testplugin"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := h.Command(ctx, "kvprobe", ""); err != nil {
+		t.Fatalf("probe command: %v", err)
+	}
+	for _, key := range []string{
+		"testplugin:kv.get",
+		"testplugin:kv.set",
+		"testplugin:kv.delete",
+		"testplugin:kv.keys",
+	} {
+		v := waitForString(t, store, key)
+		if !strings.Contains(v, "error:") || !strings.Contains(v, "reserved") {
+			t.Errorf("%s verdict = %q, want a refusal naming the reserved namespace", key, v)
+		}
+	}
+
+	// Sanity: the shared store itself still works for ordinary keys.
+	if _, err := h.Command(ctx, "ping", ""); err != nil {
+		t.Fatalf("plugin broke: %v", err)
 	}
 }
 

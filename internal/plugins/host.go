@@ -116,6 +116,27 @@ func (h *Host) Discover() (ok []*Manifest, broken map[string]string) {
 }
 
 // Install registers a plugin that is already on disk.
+// EnsureInstalled registers every discovered plugin without starting it,
+// so offline tools (CLI) see the same set as the running daemon, which
+// installs everything in StartAll. Already-registered plugins are skipped.
+// It returns per-plugin problems (broken manifests, install errors).
+func (h *Host) EnsureInstalled() map[string]string {
+	broken := map[string]string{}
+	manifests, br := h.Discover()
+	for name, why := range br {
+		broken[name] = why
+	}
+	for _, m := range manifests {
+		if _, ok := h.Get(m.Name); ok {
+			continue
+		}
+		if _, err := h.Install(filepath.Join(h.root, m.Name)); err != nil {
+			broken[m.Name] = err.Error()
+		}
+	}
+	return broken
+}
+
 func (h *Host) Install(dir string) (*Instance, error) {
 	m, err := LoadManifest(dir)
 	if err != nil {

@@ -24,6 +24,11 @@ type SettingValue struct {
 // the same one settings.get/settings.set use.
 func settingKey(name, key string) string { return settingsNS + name + ":" + key }
 
+// isReservedKey reports keys the shared kv.* API must refuse: the private
+// settings namespace. Without this gate any plugin could read or delete
+// every other plugin's secrets straight through kv.get/kv.keys.
+func isReservedKey(key string) bool { return strings.HasPrefix(key, settingsNS) }
+
 // dynamicSchemaKey holds the runtime-registered form fields (see
 // settings.schema). It lives in the same private namespace but is
 // structural, so ResetPluginSettings leaves it alone.

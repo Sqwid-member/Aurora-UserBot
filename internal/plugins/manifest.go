@@ -230,6 +230,13 @@ func (m *Manifest) Validate(dir string) error {
 	if err := checkRelative(m.Runtime.Command); err != nil {
 		return fmt.Errorf("%w: %v", ErrBadCommand, err)
 	}
+	// The wrapper runs as the plugin's executable: same rules as command,
+	// otherwise "wrap" silently bypasses the relative-path requirement.
+	if w := strings.TrimSpace(m.Runtime.Wrap); w != "" {
+		if filepath.IsAbs(w) || strings.Contains(w, "..") || strings.ContainsRune(w, '/') {
+			return fmt.Errorf("%w: wrapper %q must be a bare binary name from PATH", ErrBadCommand, m.Runtime.Wrap)
+		}
+	}
 	for _, a := range m.Runtime.Args {
 		if strings.HasPrefix(a, "-") || strings.HasPrefix(a, "/") {
 			continue // flags and absolute paths are the plugin author's business
