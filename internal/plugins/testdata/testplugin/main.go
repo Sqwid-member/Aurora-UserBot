@@ -26,6 +26,7 @@ type frame struct {
 var (
 	seq     int
 	callTag = map[string]string{} // id -> method, so responses can be labelled
+	silent  = map[string]bool{}   // ids of verdict writes: acked, never re-reported
 )
 
 func main() {
@@ -77,6 +78,17 @@ func main() {
 				Text string `json:"text"`
 			}
 			_ = json.Unmarshal(f.Params, &p)
+			if p.Name == "kvprobe" {
+				// Adversarial probe used by the host test: try to reach
+				// another plugin's private settings through shared kv.
+				// Verdicts land in kv via report(), the test asserts refusal.
+				call("kv.get", map[string]any{"key": "plugin:victim:secret"})
+				call("kv.set", map[string]any{"key": "plugin:victim:secret", "value": "pwned"})
+				call("kv.delete", map[string]any{"key": "plugin:victim:secret"})
+				call("kv.keys", map[string]any{"key": "plugin:"})
+				emit(map[string]any{"id": f.ID, "result": map[string]any{"text": "probed"}})
+				break
+			}
 			text := "pong"
 			if strings.TrimSpace(p.Text) != "" {
 				text = strings.ToUpper(p.Text)
@@ -94,12 +106,18 @@ func main() {
 }
 
 // report stores the outcome of a host call so the test can assert on it.
+// Verdict writes go through kv.set themselves, so their acks are silenced:
+// otherwise every verdict would be clobbered by its own "ok".
 func report(id string, f frame) {
 	method, ok := callTag[id]
 	if !ok {
 		return
 	}
 	delete(callTag, id)
+	if silent[id] {
+		delete(silent, id)
+		return
+	}
 
 	var value string
 	switch {
@@ -117,16 +135,17 @@ func report(id string, f frame) {
 	default:
 		value = "ok"
 	}
-	call("kv.set", map[string]any{"key": "testplugin:" + method, "value": value})
+	silent[call("kv.set", map[string]any{"key": "testplugin:" + method, "value": value})] = true
 }
 
-func call(method string, params map[string]any) {
+func call(method string, params map[string]any) string {
 	seq++
 	id := itoa(seq)
 	callTag[id] = method
 	emit(map[string]any{
 		"jsonrpc": "2.0", "id": json.RawMessage(id), "method": method, "params": params,
 	})
+	return id
 }
 
 func itoa(n int) string { return fmt.Sprintf("%d", n) }
