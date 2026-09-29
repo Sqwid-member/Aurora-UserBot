@@ -97,6 +97,14 @@
     $$('.tab-section').forEach((s) => s.classList.toggle('active', s.id === `tab-${tabId}`));
     window.scrollTo({ top: 0, behavior: 'smooth' });
     try { sessionStorage.setItem('aurora.activeTab', tabId); } catch {}
+    if (tabId === 'profile') {
+      loadProfile();
+      const sl = $('#sessions-list');
+      if (sl && !sl.dataset.loaded) {
+        sl.dataset.loaded = '1';
+        loadSessions();
+      }
+    }
   }
 
   $$('.tab-btn').forEach((btn) => {
@@ -703,9 +711,150 @@
     }
   });
 
-  $('#form-profile-edit')?.addEventListener('submit', (e) => {
+  async function loadProfile() {
+    try {
+      const p = await api('/api/profile');
+      const u = p.user || {};
+      if ($('#profile-first-name') && !$('#profile-first-name').value) $('#profile-first-name').value = u.first_name || '';
+      if ($('#profile-last-name') && !$('#profile-last-name').value) $('#profile-last-name').value = u.last_name || '';
+      if ($('#profile-username') && !$('#profile-username').value) $('#profile-username').value = u.username || '';
+      if ($('#profile-about') && !$('#profile-about').value) {
+        $('#profile-about').value = p.about || '';
+        $('#profile-about').dispatchEvent(new Event('input'));
+      }
+    } catch {}
+  }
+
+  $('#form-profile-edit')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    toast('Профіль', 'Збереження профілю Telegram... Функція увімкнена.', 'ok');
+    const btn = $('#btn-save-profile');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api('/api/profile', {
+        method: 'POST',
+        body: JSON.stringify({
+          first_name: $('#profile-first-name').value.trim(),
+          last_name: $('#profile-last-name').value.trim(),
+          about: $('#profile-about').value.trim(),
+        }),
+      });
+      toast('Профіль', `Збережено: ${res.first_name || ''} ${res.last_name || ''}`.trim(), 'ok');
+      refreshStatus();
+    } catch (err) {
+      toast('Помилка профілю', err.message, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $('#form-username-edit')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = $('#profile-username').value.trim().replace(/^@/, '');
+    if (!username) return;
+    try {
+      const res = await api('/api/profile/username', {
+        method: 'POST', body: JSON.stringify({ username }),
+      });
+      toast('Юзернейм', `Тепер @${res.username}`, 'ok');
+      refreshStatus();
+    } catch (err) {
+      toast('Помилка юзернейму', err.message, 'error');
+    }
+  });
+
+  $('#form-avatar-upload')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#profile-avatar-file');
+    const file = input?.files?.[0];
+    if (!file) { toast('Помилка', 'Оберіть файл', 'error'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast('Помилка', 'Файл більше 5 МБ', 'error'); return; }
+    const btn = $('#btn-upload-avatar');
+    if (btn) { btn.disabled = true; btn.querySelector('span').textContent = 'Завантаження…'; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api('/api/profile/avatar', {
+          method: 'POST',
+          body: JSON.stringify({ image: String(reader.result || ''), name: file.name }),
+        });
+        toast('Аватар', 'Фото профілю оновлено', 'ok');
+        input.value = '';
+      } catch (err) {
+        toast('Помилка аватара', err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.querySelector('span').textContent = 'Встановити нове фото'; }
+      }
+    };
+    reader.onerror = () => {
+      toast('Помилка', 'Не вдалося прочитати файл', 'error');
+      if (btn) { btn.disabled = false; btn.querySelector('span').textContent = 'Встановити нове фото'; }
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ---------- Active sessions ----------
+  function relTime(ts) {
+    if (!ts) return '';
+    const s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+    if (s < 60) return 'щойно';
+    if (s < 3600) return `${Math.floor(s / 60)} хв тому`;
+    if (s < 86400) return `${Math.floor(s / 3600)} год тому`;
+    return `${Math.floor(s / 86400)} дн тому`;
+  }
+
+  async function loadSessions() {
+    const box = $('#sessions-list');
+    if (!box) return;
+    box.innerHTML = '<p class="auth-lead">Завантаження…</p>';
+    try {
+      const data = await api('/api/sessions');
+      const list = data.sessions || [];
+      if (!list.length) {
+        box.innerHTML = '<p class="auth-lead">Немає активних сесій.</p>';
+        return;
+      }
+      box.innerHTML = list.map((s) => {
+        const title = [s.device, s.platform].filter(Boolean).join(' • ') || 'Невідомий пристрій';
+        const sub = [s.app, s.app_version].filter(Boolean).join(' ') +
+          (s.ip ? ` • ${esc(s.ip)}` : '') +
+          (s.region || s.country ? ` (${esc([s.region, s.country].filter(Boolean).join(', '))})` : '');
+        const badge = s.current ? '<span class="badge">поточна</span>' : (s.official_app ? '' : '<span class="badge">сторонній клієнт</span>');
+        const warn = s.password_pending ? '<span class="badge">чекає 2FA</span>' : '';
+        return `<div class="account-item" style="cursor:default;">`
+          + `<div class="account-item-meta">`
+          + `<span class="account-item-title">${esc(title)} ${badge}${warn}</span>`
+          + `<span class="account-item-sub">${esc(sub)} • активна ${esc(relTime(s.active))}</span>`
+          + `</div>`
+          + `<button type="button" class="btn btn-sm btn-danger" data-terminate-session="${s.hash}">Завершити</button>`
+          + `</div>`;
+      }).join('');
+    } catch (err) {
+      box.innerHTML = `<div class="auth-status err">${esc(err.message || 'Не вдалося')}</div>`;
+    }
+  }
+
+  $('#btn-sessions-refresh')?.addEventListener('click', () => loadSessions());
+
+  $('#sessions-list')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-terminate-session]');
+    if (!btn) return;
+    const hash = btn.dataset.terminateSession;
+    const row = btn.closest('.account-item');
+    const isCurrent = row && row.innerHTML.includes('поточна');
+    const msg = isCurrent
+      ? 'Це ПОТОЧНА сесія юзербота! Завершення вимкне Aurora. Продовжити?'
+      : 'Завершити цю сесію Telegram?';
+    if (!confirm(msg)) return;
+    btn.disabled = true;
+    try {
+      await api(`/api/sessions/${encodeURIComponent(hash)}/terminate`, { method: 'POST' });
+      toast('Сесії', 'Сесію завершено', 'ok');
+      await loadSessions();
+      await refreshStatus();
+    } catch (err) {
+      toast('Помилка', err.message, 'error');
+      btn.disabled = false;
+    }
   });
 
   // ---------- Settings (Tab 5) ----------
@@ -1210,12 +1359,21 @@
   function qrStopPoll() {
     if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
   }
+  function qrImgURL(path) {
+    const tok = localStorage.getItem("aurora_token") || window.__AURORA_TOKEN__ || '';
+    return path + (tok ? '?token=' + encodeURIComponent(tok) : '?t=') + '&t=' + Date.now();
+  }
   function qrSetLink(url, expires) {
-    const link = $('#qr-link'), exp = $('#qr-expires'), open = $('#btn-qr-open');
+    const link = $('#qr-link'), exp = $('#qr-expires'), open = $('#btn-qr-open'), img = $('#qr-img');
     if (!link || !open) return;
+    if (img && !img.dataset.errBound) {
+      img.dataset.errBound = '1';
+      img.onerror = () => { img.hidden = true; };
+    }
     if (!url) {
       link.hidden = true; link.textContent = '';
       if (exp) { exp.hidden = true; exp.textContent = ''; }
+      if (img) { img.hidden = true; img.removeAttribute('src'); }
       open.style.opacity = '.5'; open.style.pointerEvents = 'none'; open.removeAttribute('href');
       return;
     }
@@ -1225,6 +1383,7 @@
       try { exp.textContent = 'Діє до ' + new Date(expires).toLocaleTimeString(); }
       catch { exp.textContent = ''; }
     }
+    if (img) { img.hidden = false; img.src = qrImgURL('/api/auth/qr/image'); }
     open.style.opacity = '1'; open.style.pointerEvents = 'auto';
     open.setAttribute('href', url);
   }
@@ -1616,11 +1775,16 @@
     if (accQRTimer) { clearInterval(accQRTimer); accQRTimer = null; }
   }
   function accSetQRLink(url, expires) {
-    const link = $('#add-acc-qr-link'), exp = $('#add-acc-qr-expires'), open = $('#btn-add-acc-qr-open');
+    const link = $('#add-acc-qr-link'), exp = $('#add-acc-qr-expires'), open = $('#btn-add-acc-qr-open'), img = $('#add-acc-qr-img');
     if (!link || !open) return;
+    if (img && !img.dataset.errBound) {
+      img.dataset.errBound = '1';
+      img.onerror = () => { img.hidden = true; };
+    }
     if (!url) {
       link.hidden = true; link.textContent = '';
       if (exp) { exp.hidden = true; exp.textContent = ''; }
+      if (img) { img.hidden = true; img.removeAttribute('src'); }
       open.style.opacity = '.5'; open.style.pointerEvents = 'none'; open.removeAttribute('href');
       return;
     }
@@ -1629,6 +1793,10 @@
       exp.hidden = false;
       try { exp.textContent = 'Діє до ' + new Date(expires).toLocaleTimeString(); }
       catch { exp.textContent = ''; }
+    }
+    if (img && window._pendingAccId) {
+      img.hidden = false;
+      img.src = qrImgURL(`/api/accounts/${encodeURIComponent(window._pendingAccId)}/auth/qr/image`);
     }
     open.style.opacity = '1'; open.style.pointerEvents = 'auto';
     open.setAttribute('href', url);

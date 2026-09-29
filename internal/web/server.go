@@ -7,13 +7,16 @@ package web
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +25,7 @@ import (
 	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 )
 
 // AuthState is the login state the panel renders.
@@ -101,6 +105,14 @@ type Backend interface {
 	ImportSessionForAccount(accID string, session string) error
 	ImportWebSession(dc int, payload string) (int, error)
 	ImportWebSessionForAccount(accID string, dc int, payload string) (int, error)
+	QRImage() ([]byte, error)
+	QRImageForAccount(accID string) ([]byte, error)
+	Profile(ctx context.Context) (tgc.FullProfile, error)
+	Sessions(ctx context.Context) ([]tgc.AuthSession, error)
+	TerminateSession(ctx context.Context, hash int64) (bool, error)
+	UpdateProfile(ctx context.Context, first, last, about string) (proto.User, error)
+	UpdateUsername(ctx context.Context, username string) (proto.User, error)
+	UploadAvatar(ctx context.Context, name string, data []byte) (proto.User, error)
 	Logout(ctx context.Context) error
 	LogoutForAccount(ctx context.Context, accID string) error
 
@@ -246,6 +258,14 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/resend", s.handleResendCode)
 	mux.HandleFunc("POST /api/auth/qr", s.handleStartQR)
 	mux.HandleFunc("GET /api/auth/qr", s.handleQRState)
+	mux.HandleFunc("GET /api/auth/qr/image", s.handleQRImage)
+	mux.HandleFunc("GET /api/accounts/{id}/auth/qr/image", s.handleAccountQRImage)
+	mux.HandleFunc("GET /api/sessions", s.handleSessions)
+	mux.HandleFunc("POST /api/sessions/{hash}/terminate", s.handleTerminateSession)
+	mux.HandleFunc("GET /api/profile", s.handleProfile)
+	mux.HandleFunc("POST /api/profile", s.handleUpdateProfile)
+	mux.HandleFunc("POST /api/profile/username", s.handleUpdateUsername)
+	mux.HandleFunc("POST /api/profile/avatar", s.handleUploadAvatar)
 	mux.HandleFunc("POST /api/auth/password", s.handlePassword)
 	mux.HandleFunc("GET /api/session", s.handleSessionInfo)
 	mux.HandleFunc("POST /api/session/import", s.handleSessionImport)
@@ -766,6 +786,186 @@ func (s *Server) handleQRState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.opts.Backend.QRState())
 }
 
+// handleQRImage serves the pending login token as a PNG QR code, so a
+// second screen can scan it while the phone taps the link itself.
+func (s *Server) handleQRImage(w http.ResponseWriter, r *http.Request) {
+	s.serveQRImage(w, r, "")
+}
+
+// handleAccountQRImage is the per-account QR PNG.
+func (s *Server) handleAccountQRImage(w http.ResponseWriter, r *http.Request) {
+	s.serveQRImage(w, r, r.PathValue("id"))
+}
+
+func (s *Server) serveQRImage(w http.ResponseWriter, r *http.Request, accID string) {
+	var (
+		img []byte
+		err error
+	)
+	if accID == "" {
+		img, err = s.opts.Backend.QRImage()
+	} else {
+		img, err = s.opts.Backend.QRImageForAccount(accID)
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(img)
+}
+
+// handleSessions lists active Telegram logins (Settings → Devices).
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	sessions, err := s.opts.Backend.Sessions(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if sessions == nil {
+		sessions = []tgc.AuthSession{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+}
+
+// handleTerminateSession ends one login by hash.
+func (s *Server) handleTerminateSession(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	hash, err := atoi64(r.PathValue("hash"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad session hash")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	ok, err := s.opts.Backend.TerminateSession(ctx, hash)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": ok})
+}
+
+// handleProfile returns the full self profile for the panel form.
+func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	prof, err := s.opts.Backend.Profile(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, prof)
+}
+
+// handleUpdateProfile changes first name, last name and bio.
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	var req struct {
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+		About     string `json:"about"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	user, err := s.opts.Backend.UpdateProfile(ctx, req.FirstName, req.LastName, req.About)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}
+
+// handleUpdateUsername changes the @username.
+func (s *Server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	user, err := s.opts.Backend.UpdateUsername(ctx, req.Username)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}
+
+// maxAvatarBody caps avatar uploads (base64 inflates ~4/3 over the 5 MiB file).
+const maxAvatarBody = 8 << 20
+
+// handleUploadAvatar accepts a JPEG/PNG photo as a data URL and sets it.
+func (s *Server) handleUploadAvatar(w http.ResponseWriter, r *http.Request) {
+	if s.opts.ReadOnly {
+		writeErr(w, http.StatusForbidden, "core is in read-only mode")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBody)
+	var req struct {
+		Image string `json:"image"`
+		Name  string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	data, name, err := decodeDataURL(req.Image, req.Name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	user, err := s.opts.Backend.UploadAvatar(ctx, name, data)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}
+
+// decodeDataURL splits "data:image/jpeg;base64,..." into bytes and a name.
+func decodeDataURL(s, name string) ([]byte, string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, "", errors.New("порожнє зображення")
+	}
+	if i := strings.Index(s, ","); strings.HasPrefix(s, "data:") && i >= 0 {
+		s = s[i+1:]
+	}
+	data, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		if data, err = base64.URLEncoding.DecodeString(s); err != nil {
+			return nil, "", errors.New("зображення не base64")
+		}
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "avatar.jpg"
+	}
+	return data, name, nil
+}
+
 // handleSignUp creates a Telegram account for a number that is not
 // registered yet, using the code that was already confirmed.
 func (s *Server) handleSignUp(w http.ResponseWriter, r *http.Request) {
@@ -1001,6 +1201,10 @@ func atoi(s string) (int, error) {
 	var n int
 	_, err := fmt.Sscanf(s, "%d", &n)
 	return n, err
+}
+
+func atoi64(s string) (int64, error) {
+	return strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 }
 
 // openBrowser does the right thing in Termux, where there is no xdg-open.

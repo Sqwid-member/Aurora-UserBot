@@ -439,6 +439,78 @@ func (a *App) SaveConfig(c config.Config) error {
 // PluginStats implements web.Backend.
 func (a *App) PluginStats() []plugins.Stats { return a.Plugins.Stats() }
 
+// QRImage implements web.Backend: PNG QR of the pending login token.
+func (a *App) QRImage() ([]byte, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return nil, err
+	}
+	return tg.QRImage()
+}
+
+// QRImageForAccount is the per-account QR PNG.
+func (a *App) QRImageForAccount(accID string) ([]byte, error) {
+	tg := a.getTG(accID)
+	if tg == nil {
+		return nil, errors.New("акаунт Telegram не налаштовано")
+	}
+	return tg.QRImage()
+}
+
+// Sessions implements web.Backend: active logins of the active account.
+func (a *App) Sessions(ctx context.Context) ([]tgc.AuthSession, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return nil, err
+	}
+	return tg.Authorizations(ctx)
+}
+
+// TerminateSession implements web.Backend.
+func (a *App) TerminateSession(ctx context.Context, hash int64) (bool, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return false, err
+	}
+	return tg.ResetAuthorization(ctx, hash)
+}
+
+// Profile implements web.Backend: full self profile for the panel form.
+func (a *App) Profile(ctx context.Context) (tgc.FullProfile, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return tgc.FullProfile{}, err
+	}
+	return tg.SelfProfile(ctx)
+}
+
+// UpdateProfile implements web.Backend.
+func (a *App) UpdateProfile(ctx context.Context, first, last, about string) (proto.User, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return proto.User{}, err
+	}
+	return tg.UpdateProfile(ctx, first, last, about)
+}
+
+// UpdateUsername implements web.Backend.
+func (a *App) UpdateUsername(ctx context.Context, username string) (proto.User, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return proto.User{}, err
+	}
+	return tg.UpdateUsername(ctx, username)
+}
+
+// UploadAvatar implements web.Backend.
+func (a *App) UploadAvatar(ctx context.Context, name string, data []byte) (proto.User, error) {
+	tg, err := a.tg()
+	if err != nil {
+		return proto.User{}, err
+	}
+	return tg.UploadAvatar(ctx, name, data)
+}
+
 // PluginSettings implements web.Backend.
 func (a *App) PluginSettings(name string) ([]plugins.SettingValue, error) {
 	return a.Plugins.PluginSettings(name)

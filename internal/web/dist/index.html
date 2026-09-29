@@ -458,7 +458,7 @@
             </div>
             <form id="form-avatar-upload">
               <div class="form-group">
-                <label class="form-label">Оберіть нове фото профілю</label>
+                <label class="form-label">Оберіть нове фото профілю (JPEG/PNG до 5 МБ)</label>
                 <input type="file" class="form-input" id="profile-avatar-file" accept="image/jpeg,image/png" required>
               </div>
               <button type="submit" class="btn btn-primary" id="btn-upload-avatar" style="width:100%;">
@@ -466,6 +466,20 @@
                 <span>Встановити нове фото</span>
               </button>
             </form>
+          </div>
+
+          <!-- Active Sessions Card -->
+          <div class="card">
+            <div class="card-title">
+              <span>Активні сесії</span>
+              <button class="btn btn-sm" id="btn-sessions-refresh" title="Оновити список">Оновити</button>
+            </div>
+            <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:12px;">
+              Пристрої, де відкрито ваш акаунт. Завершення <b>поточної</b> сесії вимкне юзербота — підтверджуйте уважно.
+            </p>
+            <div id="sessions-list">
+              <p class="auth-lead">Натисніть «Оновити», щоб побачити сесії.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -725,6 +739,7 @@
           <div class="qr-status" id="qr-status">Посилання ще не запитано.</div>
           <div class="qr-link" id="qr-link" hidden></div>
           <div class="qr-expires" id="qr-expires" hidden></div>
+          <img class="qr-img" id="qr-img" hidden alt="QR-код входу для другого екрана">
         </div>
         <div style="display:grid; gap:10px; margin-top:12px;">
           <button type="button" class="btn btn-primary" id="btn-qr-start" style="width:100%;">Отримати посилання для входу</button>
@@ -955,6 +970,7 @@ print(client.session.save())</pre>
           <div class="qr-status" id="add-acc-qr-status">Посилання ще не запитано.</div>
           <div class="qr-link" id="add-acc-qr-link" hidden></div>
           <div class="qr-expires" id="add-acc-qr-expires" hidden></div>
+          <img class="qr-img" id="add-acc-qr-img" hidden alt="QR-код входу для другого екрана">
         </div>
         <div style="display:grid; gap:10px; margin-top:12px;">
           <button type="button" class="btn btn-primary" id="btn-add-acc-qr-start" style="width:100%;">Отримати посилання для входу</button>
