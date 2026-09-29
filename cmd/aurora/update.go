@@ -3,11 +3,14 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -65,7 +68,7 @@ func cmdUpdate(layout paths.Layout) error {
 	}
 
 	fmt.Printf("→ Отримання інформації про останній реліз...\n")
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := updateHTTPClient()
 
 	// Fetch latest release from GitHub API
 	resp, err := client.Get("https://api.github.com/repos/Sqwid-member/Aurora-UserBot/releases/latest")
@@ -255,6 +258,62 @@ func extractTarGz(dst io.Writer, src io.Reader) (int64, error) {
 		}
 		return io.Copy(dst, io.LimitReader(tr, maxUpdateBytes+1))
 	}
+}
+
+// fallbackNameservers are used only when the system resolver fails.
+// A static Go binary on Termux/Android often sees no /etc/resolv.conf
+// (/etc points at /system/etc there), so the system lookup dies with
+// "connection refused" on localhost while curl and git keep working.
+var fallbackNameservers = []string{"8.8.8.8:53", "1.1.1.1:53"}
+
+// updateHTTPClient builds the release-download client with a DNS fallback.
+func updateHTTPClient() *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = dialUpdateWithDNSFallback
+	tr.TLSHandshakeTimeout = 15 * time.Second
+	return &http.Client{Timeout: 30 * time.Second, Transport: tr}
+}
+
+// dialUpdateWithDNSFallback dials normally first and only falls back to
+// public DNS when the system resolver itself errors out. TLS SNI and cert
+// verification are unaffected: we still dial on behalf of the original
+// hostname, just with an IP we resolved ourselves.
+func dialUpdateWithDNSFallback(ctx context.Context, network, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
+	conn, err := dialer.DialContext(ctx, network, addr)
+	if err == nil {
+		return conn, nil
+	}
+	var dnsErr *net.DNSError
+	if !errors.As(err, &dnsErr) {
+		return nil, err
+	}
+	host, port, splitErr := net.SplitHostPort(addr)
+	if splitErr != nil {
+		return nil, err
+	}
+	for _, ns := range fallbackNameservers {
+		for _, proto := range []string{"udp", "tcp"} {
+			resolver := &net.Resolver{
+				PreferGo:     true,
+				StrictErrors: true,
+				Dial: func(dialCtx context.Context, _, _ string) (net.Conn, error) {
+					d := &net.Dialer{Timeout: 5 * time.Second}
+					return d.DialContext(dialCtx, proto, ns)
+				},
+			}
+			ips, rerr := resolver.LookupIPAddr(ctx, host)
+			if rerr != nil || len(ips) == 0 {
+				continue
+			}
+			for _, ip := range ips {
+				if c, derr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port)); derr == nil {
+					return c, nil
+				}
+			}
+		}
+	}
+	return nil, err
 }
 
 func restoreBackup(target, backup string) {

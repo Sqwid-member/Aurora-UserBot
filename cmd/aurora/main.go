@@ -579,6 +579,7 @@ func cmdDoctor(layout paths.Layout) error {
 				}
 				return "стандартні (Telegram Web K)"
 			}()},
+			check{"пристрій (маскування)", true, config.DetectedDeviceSummary()},
 			check{"сесія", tgc.InspectSession(layout.SessionFile()).Exists, layout.SessionFile()},
 		)
 	}
@@ -693,6 +694,8 @@ func cmdSetup(layout paths.Layout) error {
 	}
 	fmt.Println("   (За замовчуванням активні стандартні ключі: вхід лише за номером, кодом і паролем)")
 	fmt.Println("   Якщо у вас виникають блокування або помилки, ви можете вказати власні ключі з my.telegram.org")
+	fmt.Printf("   Пристрій для маскування входу: %s\n", config.DetectedDeviceSummary())
+	fmt.Println("   (порожні поля пристрою в конфігу підміняються даними цього телефону автоматично)")
 	fmt.Println()
 
 	fmt.Print("Бажаєте встановити власні ключі з my.telegram.org? [y/N]: ")

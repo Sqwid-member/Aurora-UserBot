@@ -885,6 +885,11 @@ func (a *App) initAccountRuntime(accCfg config.AccountConfig) *accountRuntime {
 
 func (a *App) tgcOptionsForAccount(acc config.AccountConfig) tgc.Options {
 	c := a.Cfg.Get()
+	// Mask the login as this physical phone: empty device fields resolve
+	// to the real model/Android version instead of a generic placeholder.
+	// Explicit user values always win; the stored config is untouched.
+	dev := c
+	dev.ApplyDetectedDevice()
 	sink := a.Log.Scoped("acc:" + acc.ID)
 	return tgc.Options{
 		AppID:          acc.EffectiveAppID(c.Telegram.AppID),
@@ -895,11 +900,11 @@ func (a *App) tgcOptionsForAccount(acc config.AccountConfig) tgc.Options {
 		BlockedMode:    c.Telegram.BlockedMode,
 		MTProxy:        c.Telegram.MTProxy,
 		Socks5:         c.Telegram.Socks5,
-		DeviceName:     c.Telegram.DeviceName,
-		DeviceModel:    c.Telegram.DeviceModel,
-		DeviceSystem:   c.Telegram.DeviceSystem,
-		DeviceVersion:  c.Telegram.DeviceVersion,
-		DeviceLanguage: c.Telegram.DeviceLanguage,
+		DeviceName:     dev.Telegram.DeviceName,
+		DeviceModel:    dev.Telegram.DeviceModel,
+		DeviceSystem:   dev.Telegram.DeviceSystem,
+		DeviceVersion:  dev.Telegram.DeviceVersion,
+		DeviceLanguage: dev.Telegram.DeviceLanguage,
 		PFS:            c.Telegram.PFS,
 		NoUpdates:      c.Telegram.DisableUpdates,
 		Logger:         sink,
