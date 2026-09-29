@@ -8,7 +8,10 @@
 set -euo pipefail
 
 REPO="${AURORA_REPO:-Sqwid-member/Aurora-UserBot}"
-VERSION="${AURORA_VERSION:-v2.6.1}"
+# Explicit version wins; otherwise the latest GitHub release is used with a
+# pinned fallback, so this file never goes stale after a new release.
+VERSION="${AURORA_VERSION:-}"
+VERSION_DEFAULT="v2.6.2"
 DATA_DIR="${AURORA_HOME:-$HOME/.local/share/aurora}"
 
 say()  { printf '\033[35m▚▚▚\033[0m %s\n' "$*"; }
@@ -109,6 +112,30 @@ find_local_package() {
 }
 
 # --- 2. download from GitHub Releases -----------------------------------------
+# resolve_version prints the release tag to install: explicit AURORA_VERSION,
+# else the latest GitHub release, else the pinned fallback. Never fails.
+resolve_version() {
+  if [ -n "$VERSION" ]; then
+    printf '%s\n' "$VERSION"
+    return 0
+  fi
+  local tag=""
+  if command -v curl >/dev/null 2>&1; then
+    local auth=()
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
+    fi
+    tag="$(curl -fsSL "${auth[@]}" --connect-timeout 10 --max-time 30 \
+      "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+      | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | cut -d'"' -f4)"
+  fi
+  if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s\n' "$tag"
+  else
+    printf '%s\n' "$VERSION_DEFAULT"
+  fi
+}
+
 fetch_prebuilt() {
   [ "${AURORA_FORCE_SRC:-0}" = "1" ] && return 1
 
@@ -124,7 +151,9 @@ fetch_prebuilt() {
     curl_auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
   fi
 
-  local tag="$VERSION"
+  local tag
+  tag="$(resolve_version)"
+  say "Реліз для встановлення: $tag"
   local candidates=(
     "aurora-termux-ready.tar.gz"
     "aurora-linux-${GOARCH}.tar.gz"

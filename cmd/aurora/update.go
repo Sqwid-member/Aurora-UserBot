@@ -44,12 +44,16 @@ func cmdUpdate(layout paths.Layout) error {
 
 	opsys := runtime.GOOS
 	arch := runtime.GOARCH
-	var binName string
+	// Candidate asset names in preference order: raw binaries first
+	// (a .sha256 sidecar must never win the match), then tarballs.
+	var candidates []string
 	switch opsys + "/" + arch {
 	case "android/arm64", "linux/arm64", "darwin/arm64":
-		binName = "aurora-arm64"
+		candidates = []string{"aurora-arm64", "aurora-arm64.tar.gz"}
 	case "linux/amd64", "darwin/amd64":
-		binName = "aurora-amd64"
+		candidates = []string{"aurora-amd64", "aurora-amd64.tar.gz"}
+	case "linux/arm":
+		candidates = []string{"aurora-linux-arm.tar.gz", "aurora-linux-arm"}
 	default:
 		return fmt.Errorf("автоматичне оновлення не підтримується для платформи: %s/%s", opsys, arch)
 	}
@@ -86,25 +90,23 @@ func cmdUpdate(layout paths.Layout) error {
 		return fmt.Errorf("розбір відповіді GitHub API: %w", err)
 	}
 
-	// Find asset for our platform. Two passes: an exact raw binary first
-	// (a .sha256 checksum file must never win the match), then a tarball.
+	// Find asset for our platform, trying candidate names in preference
+	// order. Checksum sidecars (.sha256) never match a candidate, so they
+	// can never win.
 	var asset *releaseAsset
-	for i := range rel.Assets {
-		if rel.Assets[i].Name == binName {
-			asset = &rel.Assets[i]
-			break
-		}
-	}
-	if asset == nil {
+	for _, want := range candidates {
 		for i := range rel.Assets {
-			if rel.Assets[i].Name == binName+".tar.gz" {
+			if rel.Assets[i].Name == want {
 				asset = &rel.Assets[i]
 				break
 			}
 		}
+		if asset != nil {
+			break
+		}
 	}
 	if asset == nil {
-		return fmt.Errorf("реліз %s не містить бінарника для %s", rel.TagName, binName)
+		return fmt.Errorf("реліз %s не містить бінарника для %s/%s", rel.TagName, opsys, arch)
 	}
 
 	// Download the binary
@@ -154,8 +156,9 @@ func cmdUpdate(layout paths.Layout) error {
 		return fmt.Errorf("chmod нового бінарника: %w", err)
 	}
 
-	// Verify checksum if .sha256 asset exists
-	shaAssetName := binName + ".sha256"
+	// Verify checksum if .sha256 asset exists (named after the raw
+	// binary, so strip a tarball suffix first).
+	shaAssetName := strings.TrimSuffix(asset.Name, ".tar.gz") + ".sha256"
 	for i := range rel.Assets {
 		if rel.Assets[i].Name == shaAssetName {
 			shaResp, err := client.Get(rel.Assets[i].BrowserURL)
