@@ -52,6 +52,14 @@ func encodeTelethon(data *session.Data) (string, error) {
 		}
 	}
 	if ip == nil {
+		// Sessions born from a full login flow never store an address
+		// (gotd reconnects through its resolver, not this field), so
+		// resolve the DC the same way web imports do.
+		if data.DC >= 1 && data.DC <= 5 {
+			ip = net.ParseIP(webDCAddr(data.DC))
+		}
+	}
+	if ip == nil {
 		return "", fmt.Errorf("session address %q has no IPv4 form", data.Addr)
 	}
 	ip4 := ip.To4()

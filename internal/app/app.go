@@ -361,7 +361,7 @@ func (a *App) removePidFile() { _ = os.Remove(a.Paths.PidFile()) }
 func (a *App) printBanner(cfg config.Config, note string) {
 	var b strings.Builder
 	b.WriteString("\n  \x1b[35m▚▚▚\x1b[0m  Aurora ")
-	b.WriteString("\x1b[2mv" + buildinfo.Version + "\x1b[0m\n")
+	b.WriteString("\x1b[2mv" + strings.TrimPrefix(buildinfo.Version, "v") + "\x1b[0m\n")
 	if note != "" {
 		b.WriteString("  ⚠ " + note + "\n\n")
 	}
