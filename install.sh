@@ -11,7 +11,7 @@ REPO="${AURORA_REPO:-Sqwid-member/Aurora-UserBot}"
 # Explicit version wins; otherwise the latest GitHub release is used with a
 # pinned fallback, so this file never goes stale after a new release.
 VERSION="${AURORA_VERSION:-}"
-VERSION_DEFAULT="v2.6.2"
+VERSION_DEFAULT="v2.6.3"
 DATA_DIR="${AURORA_HOME:-$HOME/.local/share/aurora}"
 
 say()  { printf '\033[35m▚▚▚\033[0m %s\n' "$*"; }
