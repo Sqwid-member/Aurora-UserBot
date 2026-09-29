@@ -42,7 +42,8 @@ func DetectDevice() DeviceInfo {
 
 func detectDevice() DeviceInfo {
 	var d DeviceInfo
-	if runtime.GOOS == "android" || isTermuxEnv() {
+	switch {
+	case runtime.GOOS == "android" || isTermuxEnv():
 		props := getProps(map[string]string{
 			"manufacturer": "ro.product.manufacturer",
 			"model":        "ro.product.model",
@@ -50,9 +51,95 @@ func detectDevice() DeviceInfo {
 		})
 		d.Model = joinModel(props["manufacturer"], props["model"])
 		d.System = joinSystem(props["release"])
+	case runtime.GOOS == "linux":
+		d.Model, d.System = detectLinuxDevice()
 	}
 	d.Language = systemLanguage()
 	return d
+}
+
+// dmiBase and osReleasePath are variables (not constants) so tests can
+// point them at fixture files.
+var (
+	dmiBase       = "/sys/devices/virtual/dmi/id"
+	osReleasePath = "/etc/os-release"
+)
+
+// detectLinuxDevice identifies a Linux box from DMI data and os-release:
+// model like "Dell Inc. XPS 15 9520", system like "Ubuntu 24.04.1 LTS".
+// Containers usually lack DMI — then the hostname (or arch) is used, so
+// the result is still stable per machine instead of a shared placeholder.
+func detectLinuxDevice() (model, system string) {
+	model = joinModel(
+		readFirstLine(dmiBase+"/sys_vendor"),
+		readFirstLine(dmiBase+"/product_name"),
+	)
+	if model == "" {
+		if h, err := os.Hostname(); err == nil && strings.TrimSpace(h) != "" && h != "localhost" {
+			model = strings.TrimSpace(h)
+		} else {
+			model = "Linux " + runtime.GOARCH
+		}
+	}
+	system = parseOSRelease(readFileLimited(osReleasePath, 8192))
+	return model, system
+}
+
+// parseOSRelease extracts a display name from os-release content:
+// PRETTY_NAME wins, otherwise NAME + VERSION_ID.
+func parseOSRelease(content string) string {
+	var name, version, pretty string
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		val = strings.Trim(strings.TrimSpace(val), `"'`)
+		switch strings.TrimSpace(key) {
+		case "PRETTY_NAME":
+			pretty = val
+		case "NAME":
+			name = val
+		case "VERSION_ID":
+			version = val
+		}
+	}
+	if pretty != "" {
+		return pretty
+	}
+	if name == "" {
+		return ""
+	}
+	if version != "" {
+		return name + " " + version
+	}
+	return name
+}
+
+// readFirstLine returns the trimmed first line of a sysfs-style file.
+func readFirstLine(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	line, _, _ := strings.Cut(string(data), "\n")
+	return strings.TrimSpace(line)
+}
+
+// readFileLimited reads a small config file, tolerating absence.
+func readFileLimited(path string, limit int64) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	buf := make([]byte, limit)
+	n, _ := f.Read(buf)
+	return string(buf[:n])
 }
 
 // joinModel folds manufacturer and model into one display string without

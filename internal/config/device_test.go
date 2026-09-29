@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseLang(t *testing.T) {
 	cases := map[string]string{
@@ -109,6 +113,47 @@ func TestSnapshotDeviceReplacesOldPlaceholders(t *testing.T) {
 	}
 	if c.Telegram.DeviceModel != "Xiaomi 2602EPTC0G" || c.Telegram.DeviceSystem != "Android 16" || c.Telegram.DeviceLanguage != "uk" {
 		t.Fatalf("placeholders not replaced: %+v", c.Telegram)
+	}
+}
+
+func TestParseOSRelease(t *testing.T) {
+	ubuntu := "PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\n"
+	if got := parseOSRelease(ubuntu); got != "Ubuntu 24.04.1 LTS" {
+		t.Errorf("ubuntu: got %q", got)
+	}
+	debian := "NAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\n"
+	if got := parseOSRelease(debian); got != "Debian GNU/Linux 12" {
+		t.Errorf("debian: got %q", got)
+	}
+	if got := parseOSRelease(""); got != "" {
+		t.Errorf("empty: got %q", got)
+	}
+	if got := parseOSRelease("# comment\nGARBAGE\n"); got != "" {
+		t.Errorf("garbage: got %q", got)
+	}
+}
+
+func TestDetectLinuxDeviceFixtures(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("sys_vendor", "Dell Inc.\n")
+	write("product_name", "XPS 15 9520\n")
+	write("os-release", "PRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nNAME=\"Ubuntu\"\n")
+
+	oldBase, oldOS := dmiBase, osReleasePath
+	dmiBase, osReleasePath = dir, filepath.Join(dir, "os-release")
+	defer func() { dmiBase, osReleasePath = oldBase, oldOS }()
+
+	model, system := detectLinuxDevice()
+	if model != "Dell Inc. XPS 15 9520" {
+		t.Errorf("model = %q", model)
+	}
+	if system != "Ubuntu 24.04.1 LTS" {
+		t.Errorf("system = %q", system)
 	}
 }
 
