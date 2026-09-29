@@ -220,6 +220,16 @@ else
   build_from_source
 fi
 
+# --- 3.5 Device snapshot ------------------------------------------------------
+# Every phone keeps its own real model/Android in config.json, so Telegram
+# sees the login coming from genuine hardware instead of a placeholder.
+# Best effort: must never fail the install (wrong-arch binary, no getprop…).
+if [ -x "$BIN_DIR/aurora" ]; then
+  if AURORA_HOME="$DATA_DIR" "$BIN_DIR/aurora" device --save >/dev/null 2>&1; then
+    say "Зліпок пристрою збережено (модель/система цього телефону)."
+  fi
+fi
+
 # --- 4. Termux & Shell environment setup -------------------------------------
 if [ "$IS_TERMUX" = "1" ]; then
   # Утримання фонової роботи процесора при вимкненому екрані

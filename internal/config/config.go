@@ -177,11 +177,15 @@ func Default() *Config {
 	return &Config{
 		Version: Version,
 		Telegram: Telegram{
+			// Model/system/language stay empty on purpose: the installer
+			// snapshots the real phone ("aurora device --save") and the
+			// runtime falls back to live detection. A generic placeholder
+			// here would shadow the genuine hardware forever.
 			DeviceName:     "Aurora",
-			DeviceModel:    "Android",
-			DeviceSystem:   "Android",
+			DeviceModel:    "",
+			DeviceSystem:   "",
 			DeviceVersion:  "14",
-			DeviceLanguage: "en",
+			DeviceLanguage: "",
 		},
 		Web: Web{
 			Enabled:     true,

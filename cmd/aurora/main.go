@@ -52,8 +52,9 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   plugin restart <ім'я>
   plugin install <git-url> [ім'я]
   plugin remove <ім'я>
-  session             інформація про локальну сесію
+	session             інформація про локальну сесію
   session export      надрукувати StringSession (Telethon/Pyrogram)
+  device [--save]     показати/зберегти зліпок пристрою для маскування входу
   logout              завершити сесію на стороні Telegram
   config              показати шлях і вміст конфігурації
   doctor              перевірка оточення
@@ -128,6 +129,8 @@ func run(args []string) error {
 		return cmdPlugins(layout, args)
 	case "session":
 		return cmdSession(layout, args)
+	case "device":
+		return cmdDevice(layout, args)
 	case "logout":
 		return cmdLogout(layout)
 	case "config":

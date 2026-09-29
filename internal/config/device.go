@@ -155,15 +155,45 @@ func isTermuxEnv() bool {
 // ApplyDetectedDevice fills empty device fields from the real phone.
 // Explicit user values always win; app version is never touched here.
 func (c *Config) ApplyDetectedDevice() {
-	d := DetectDevice()
-	if strings.TrimSpace(c.Telegram.DeviceModel) == "" && d.Model != "" {
+	c.SnapshotDevice(DetectDevice())
+}
+
+// SnapshotDevice merges a detected DeviceInfo into the config, filling only
+// empty fields. It reports which config keys changed, so installers and CLI
+// can tell the user what was snapshotted. Explicit values are never touched.
+func (c *Config) SnapshotDevice(d DeviceInfo) []string {
+	var changed []string
+	if isDevicePlaceholder("device_model", c.Telegram.DeviceModel) && d.Model != "" {
 		c.Telegram.DeviceModel = d.Model
+		changed = append(changed, "device_model")
 	}
-	if strings.TrimSpace(c.Telegram.DeviceSystem) == "" && d.System != "" {
+	if isDevicePlaceholder("device_system", c.Telegram.DeviceSystem) && d.System != "" {
 		c.Telegram.DeviceSystem = d.System
+		changed = append(changed, "device_system")
 	}
-	if strings.TrimSpace(c.Telegram.DeviceLanguage) == "" && d.Language != "" {
+	if isDevicePlaceholder("device_language", c.Telegram.DeviceLanguage) && d.Language != "" {
 		c.Telegram.DeviceLanguage = d.Language
+		changed = append(changed, "device_language")
+	}
+	return changed
+}
+
+// isDevicePlaceholder reports values that carry no real identity: empties
+// and the generic "Android" placeholder older installs defaulted to. No
+// genuine phone reports its model or OS as bare "Android", so treating it
+// as empty lets the real hardware take over on re-snapshot (and at runtime).
+func isDevicePlaceholder(field, value string) bool {
+	v := strings.ToLower(strings.TrimSpace(value))
+	switch field {
+	case "device_model", "device_system":
+		return v == "" || v == "android"
+	case "device_language":
+		// "en" was the old unconditional default; a genuine explicit
+		// choice survives because re-snapshot with the same real
+		// language is a no-op change.
+		return v == "" || v == "en"
+	default:
+		return v == ""
 	}
 }
 
