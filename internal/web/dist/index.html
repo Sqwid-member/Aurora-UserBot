@@ -859,43 +859,118 @@ print(client.session.save())</pre>
       </button>
     </div>
     <div class="modal-body">
-      <!-- Step 1: Info & Phone -->
-      <div id="add-acc-step-phone">
-        <form id="form-add-account-phone">
-          <div class="form-group">
-            <label class="form-label">Назва акаунта (мітка)</label>
-            <input type="text" class="form-input" id="add-acc-title" placeholder="Наприклад: Робочий, Твінк, Мій бот" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Номер телефону</label>
-            <input type="text" class="form-input" id="add-acc-phone" placeholder="+380991234567" required>
-          </div>
-          <button type="submit" class="btn btn-primary" id="btn-submit-add-acc" style="width:100%;">
-            <span>Отримати код підтвердження</span>
-          </button>
-        </form>
+      <div class="form-group">
+        <label class="form-label">Назва акаунта (мітка)</label>
+        <input type="text" class="form-input" id="add-acc-title" placeholder="Наприклад: Робочий, Твінк, Мій бот">
+      </div>
+      <div class="seg auth-tabs" id="add-acc-tabs" role="tablist" aria-label="Спосіб додавання">
+        <button type="button" class="active" data-add-acc-tab="code">Код</button>
+        <button type="button" data-add-acc-tab="qr">QR на цьому телефоні</button>
+        <button type="button" data-add-acc-tab="session">Імпорт сесії</button>
       </div>
 
-      <!-- Step 2: Code -->
-      <div id="add-acc-step-code" style="display:none;">
-        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть код підтвердження з додатку Telegram або SMS:</p>
-        <form id="form-add-account-code">
-          <div class="form-group">
-            <input type="text" class="form-input" id="add-acc-code-input" placeholder="12345" required>
-          </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;">Підтвердити код</button>
-        </form>
+      <!-- Tab: code -->
+      <div id="add-acc-tab-code">
+        <div id="add-acc-step-phone">
+          <form id="form-add-account-phone">
+            <div class="form-group">
+              <label class="form-label">Номер телефону</label>
+              <input type="text" class="form-input" id="add-acc-phone" placeholder="+380991234567" required autocomplete="tel">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button type="submit" class="btn btn-primary" id="btn-submit-add-acc">Отримати код</button>
+              <button type="button" class="btn" id="btn-add-acc-sms">Код по SMS</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="add-acc-step-code" style="display:none;">
+          <p class="auth-lead">Введіть код підтвердження з додатку Telegram або SMS:</p>
+          <form id="form-add-account-code">
+            <div class="form-group">
+              <input type="text" class="form-input" id="add-acc-code-input" placeholder="12345" required inputmode="numeric" autocomplete="one-time-code">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button type="submit" class="btn btn-primary">Підтвердити код</button>
+              <button type="button" class="btn" id="btn-add-acc-resend">Надіслати ще раз</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="add-acc-step-signup" style="display:none;">
+          <p class="auth-lead">🆕 Цей номер ще не зареєстровано — створимо новий акаунт:</p>
+          <form id="form-add-account-signup">
+            <div class="form-group">
+              <label class="form-label">Ім'я (обов'язково)</label>
+              <input type="text" class="form-input" id="add-acc-signup-first" placeholder="Ваше ім'я" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Прізвище (необов'язково)</label>
+              <input type="text" class="form-input" id="add-acc-signup-last" placeholder="Прізвище">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Створити акаунт</button>
+          </form>
+        </div>
+
+        <div id="add-acc-step-pwd" style="display:none;">
+          <p class="auth-lead">Введіть пароль двофакторної автентифікації (2FA Cloud Password):</p>
+          <form id="form-add-account-pwd">
+            <div class="form-group">
+              <input type="password" class="form-input" id="add-acc-pwd-input" placeholder="Ваш 2FA пароль" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Увійти</button>
+          </form>
+        </div>
+
+        <div class="auth-status" id="add-acc-status" hidden></div>
       </div>
 
-      <!-- Step 3: 2FA Password -->
-      <div id="add-acc-step-pwd" style="display:none;">
-        <p style="font-size:13px; color:var(--md-text-secondary); margin-bottom:14px;">Введіть пароль двофакторної автентифікації (2FA Cloud Password):</p>
-        <form id="form-add-account-pwd">
-          <div class="form-group">
-            <input type="password" class="form-input" id="add-acc-pwd-input" placeholder="Ваш 2FA пароль" required>
+      <!-- Tab: QR -->
+      <div id="add-acc-tab-qr" hidden>
+        <p class="auth-lead">Без номера і SMS: тапніть посилання на <b>цьому ж телефоні</b> в <b>офіційному Telegram</b> і підтвердіть вхід. Акаунт створиться з вказаною вище назвою.</p>
+        <div class="qr-box">
+          <div class="qr-status" id="add-acc-qr-status">Посилання ще не запитано.</div>
+          <div class="qr-link" id="add-acc-qr-link" hidden></div>
+          <div class="qr-expires" id="add-acc-qr-expires" hidden></div>
+        </div>
+        <div style="display:grid; gap:10px; margin-top:12px;">
+          <button type="button" class="btn btn-primary" id="btn-add-acc-qr-start" style="width:100%;">Отримати посилання для входу</button>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <a class="btn btn-success" id="btn-add-acc-qr-open" href="#" target="_self" style="text-decoration:none; justify-content:center; opacity:.5; pointer-events:none;">Відкрити в Telegram</a>
+            <button type="button" class="btn" id="btn-add-acc-qr-copy">Копіювати посилання</button>
           </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;">Увійти</button>
+        </div>
+      </div>
+
+      <!-- Tab: session -->
+      <div id="add-acc-tab-session" hidden>
+        <p class="auth-lead"><b>StringSession</b> (Telethon-формат, починається з <code>1…</code>). Акаунт створиться з вказаною вище назвою.</p>
+        <form id="form-add-account-import">
+          <div class="form-group">
+            <textarea class="form-textarea" id="add-acc-session-input" rows="3" placeholder="1aBcDeFgHiJkLm…" spellcheck="false" style="font-family:var(--font-mono,monospace);"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Імпортувати сесію</button>
         </form>
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--md-border-subtle);">
+          <p class="auth-lead"><b>Або ключі з офіційного Telegram Web</b> (див. вкладку «Імпорт сесії» головного входу — там букмарклет та інструкція).</p>
+          <form id="form-add-account-import-web">
+            <div class="form-group">
+              <textarea class="form-textarea" id="add-acc-web-input" rows="2" placeholder='{"dc4_auth_key":"…","dc":4,…}' spellcheck="false" style="font-family:var(--font-mono,monospace);"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Дата-центр</label>
+              <select class="form-select" id="add-acc-web-dc">
+                <option value="0">Авто</option>
+                <option value="1">DC 1</option>
+                <option value="2">DC 2</option>
+                <option value="3">DC 3</option>
+                <option value="4">DC 4</option>
+                <option value="5">DC 5</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Імпортувати з Web</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>

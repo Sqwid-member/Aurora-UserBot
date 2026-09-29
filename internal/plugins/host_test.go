@@ -197,21 +197,22 @@ func TestEventDeliveryAndHostAPIFromPlugin(t *testing.T) {
 	h.Emit("not.subscribed", map[string]string{"ignored": "yes"})
 	h.Emit("core.start", map[string]any{})
 
-	// The plugin calls kv.set on every event it receives; wait for the round trip.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if v, ok := store.GetString("testplugin:last"); ok && v == "core.start" {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
+	// The host serves plugin calls concurrently, so a "last write wins"
+	// assertion across events is racy by design. Wait for the per-event
+	// markers instead: both must arrive, in any order.
+	if v := waitForString(t, store, "testplugin:seen:message.new"); v == "" {
+		t.Fatal("message.new never reached the plugin")
 	}
-	if v, _ := store.GetString("testplugin:last"); v != "core.start" {
-		t.Fatalf("the last event the plugin saw was %q, want core.start", v)
+	if v := waitForString(t, store, "testplugin:seen:core.start"); v == "" {
+		t.Fatal("core.start never reached the plugin")
+	}
+	if v, _ := store.GetString("testplugin:seen:not.subscribed"); v != "" {
+		t.Fatalf("unsubscribed event leaked to the plugin: %q", v)
 	}
 
 	inst, _ := h.Get("testplugin")
-	if got := inst.Stats(); got.Events == 0 {
-		t.Error("delivered event counter did not move")
+	if got := inst.Stats(); got.Events != 2 {
+		t.Errorf("delivered event counter = %d, want 2 (unsubscribed event must not count)", got.Events)
 	}
 }
 

@@ -65,6 +65,10 @@ func main() {
 			// grants tg:send/read and config but NOT net, so http.request
 			// must come back forbidden.
 			call("kv.set", map[string]any{"key": "testplugin:last", "value": ev.Name})
+			// Per-event marker: the host serves plugin calls concurrently, so
+			// "last write wins" across events is racy by design. Tests must
+			// wait for markers, never for global order.
+			call("kv.set", map[string]any{"key": "testplugin:seen:" + ev.Name, "value": "1"})
 			call("http.request", map[string]any{"url": "http://example.com"})
 			call("tg.get_me", nil)
 		case "command":

@@ -215,6 +215,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/accounts/{id}/auth/signup", s.handleAccountSignUp)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/resend", s.handleAccountResendCode)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/qr", s.handleAccountStartQR)
+	mux.HandleFunc("GET /api/accounts/{id}/auth/qr", s.handleAccountQRState)
 	mux.HandleFunc("POST /api/accounts/{id}/auth/password", s.handleAccountPassword)
 	mux.HandleFunc("POST /api/accounts/{id}/session/import", s.handleAccountSessionImport)
 	mux.HandleFunc("POST /api/accounts/{id}/session/import-web", s.handleAccountSessionImportWeb)
@@ -1089,6 +1090,11 @@ func (s *Server) handleAccountStartQR(w http.ResponseWriter, r *http.Request) {
 		return s.opts.Backend.StartQRLoginForAccount(ctx, id)
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleAccountQRState reports the login token waiting for approval.
+func (s *Server) handleAccountQRState(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.opts.Backend.QRStateForAccount(r.PathValue("id")))
 }
 
 // handleAccountResendCode resends the code for one account.

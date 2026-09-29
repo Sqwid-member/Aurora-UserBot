@@ -1315,51 +1315,114 @@
     }
   });
 
+  // ---------- Add-account wizard (code / QR / session tabs) ----------
+  function accTab(name) {
+    $$('#add-acc-tabs [data-add-acc-tab]').forEach((b) => b.classList.toggle('active', b.dataset.addAccTab === name));
+    ['code', 'qr', 'session'].forEach((t) => {
+      const el = $('#add-acc-tab-' + t);
+      if (el) el.hidden = t !== name;
+    });
+  }
+  $$('#add-acc-tabs [data-add-acc-tab]').forEach((b) => {
+    b.onclick = () => accTab(b.dataset.addAccTab);
+  });
+
+  function accNote(msg, isErr) {
+    const el = $('#add-acc-status');
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    el.textContent = msg;
+    el.classList.toggle('err', !!isErr);
+  }
+
+  function accShowStep(which) {
+    const map = { phone: '#add-acc-step-phone', code: '#add-acc-step-code', signup: '#add-acc-step-signup', pwd: '#add-acc-step-pwd' };
+    Object.entries(map).forEach(([k, sel]) => {
+      const el = $(sel);
+      if (el) el.style.display = k === which ? 'block' : 'none';
+    });
+    accTab('code');
+  }
+
+  async function accDone(msg) {
+    toast('Успіх', msg, 'ok');
+    closeModal('#modal-account-add');
+    accStopQR();
+    await loadAccounts();
+    await refreshStatus();
+  }
+
+  // Creates the backend account on first use per wizard run and reuses it.
+  async function ensurePendingAcc(phone) {
+    if (window._pendingAccId) return window._pendingAccId;
+    const title = ($('#add-acc-title').value || '').trim();
+    const newAcc = await api('/api/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ title, phone: phone || '' }),
+    });
+    window._pendingAccId = newAcc.id;
+    return newAcc.id;
+  }
+  const accPath = (id, suffix) => `/api/accounts/${encodeURIComponent(id)}${suffix}`;
+
   $('#btn-open-add-account')?.addEventListener('click', () => {
     $('#account-pop')?.classList.remove('open');
-    $('#add-acc-step-phone').style.display = 'block';
-    $('#add-acc-step-code').style.display = 'none';
-    $('#add-acc-step-pwd').style.display = 'none';
+    window._pendingAccId = '';
+    accNote('', false);
+    accShowStep('phone');
+    accTab('code');
+    accSetQRLink('', '');
+    const st = $('#add-acc-qr-status');
+    if (st) st.textContent = 'Посилання ще не запитано.';
     openModal('#modal-account-add');
   });
 
-  $('#form-add-account-phone')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('#form-add-account-phone button[type="submit"]');
-    const title = $('#add-acc-title').value.trim();
+  async function accRequestCode(viaSMS) {
     const input = $('#add-acc-phone');
-    const phone = normalizePhone(input.value.trim());
+    const phone = normalizePhone((input.value || '').trim());
     if (!phone) {
       toast('Помилка', 'Введіть номер телефону', 'error');
       return;
     }
     input.value = phone;
-
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Надсилаємо код...';
-    }
     try {
-      const newAcc = await api('/api/accounts', {
-        method: 'POST',
-        body: JSON.stringify({ title, phone }),
-      });
-      window._pendingAccId = newAcc.id;
-      await api(`/api/accounts/${encodeURIComponent(newAcc.id)}/auth/code-request`, {
+      accNote(viaSMS ? 'Надсилаємо код по SMS…' : 'Надсилаємо код…', false);
+      const id = await ensurePendingAcc(phone);
+      await api(accPath(id, '/auth/' + (viaSMS ? 'code-request/sms' : 'code-request')), {
         method: 'POST',
         body: JSON.stringify({ phone }),
       });
-      toast('Акаунт створено', 'Код підтвердження надіслано в Telegram', 'ok');
-      $('#add-acc-step-phone').style.display = 'none';
-      $('#add-acc-step-code').style.display = 'block';
+      toast('Акаунт створено', viaSMS ? 'Код надіслано по SMS!' : 'Код підтвердження надіслано!', 'ok');
+      accShowStep('code');
+      accNote('', false);
       setTimeout(() => $('#add-acc-code-input')?.focus(), 100);
     } catch (err) {
+      accNote(err.message || 'Не вдалося надіслати код', true);
       toast('Помилка', err.message || 'Не вдалося надіслати код', 'error');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Отримати код';
-      }
+    }
+  }
+
+  $('#form-add-account-phone')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#form-add-account-phone button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Надсилаємо код...'; }
+    try { await accRequestCode(false); }
+    finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Отримати код'; }
+    }
+  });
+
+  $('#btn-add-acc-sms')?.addEventListener('click', () => accRequestCode(true));
+
+  $('#btn-add-acc-resend')?.addEventListener('click', async () => {
+    if (!window._pendingAccId) return;
+    try {
+      await api(accPath(window._pendingAccId, '/auth/resend'), { method: 'POST' });
+      toast('Акаунт', 'Код надіслано повторно', 'ok');
+    } catch (err) {
+      accNote(err.message || 'Не вдалося надіслати повторно', true);
+      toast('Помилка', err.message || 'Не вдалося надіслати повторно', 'error');
     }
   });
 
@@ -1369,22 +1432,42 @@
     if (!code || !window._pendingAccId) return;
 
     try {
-      await api(`/api/accounts/${encodeURIComponent(window._pendingAccId)}/auth/code`, {
+      await api(accPath(window._pendingAccId, '/auth/code'), {
         method: 'POST',
         body: JSON.stringify({ code }),
       });
-      toast('Успіх', 'Новий акаунт успішно авторизовано!', 'ok');
-      closeModal('#modal-account-add');
-      await loadAccounts();
-      await refreshStatus();
+      await accDone('Новий акаунт успішно авторизовано!');
     } catch (err) {
       const msg = err.message || '';
-      if (msg.includes('password') || msg.includes('2FA') || msg.includes('SESSION_PASSWORD_NEEDED')) {
-        $('#add-acc-step-code').style.display = 'none';
-        $('#add-acc-step-pwd').style.display = 'block';
+      const up = msg.toUpperCase();
+      if (up.includes('SESSION_PASSWORD_NEEDED') || up.includes('PASSWORD_AUTH_NEEDED') || msg.includes('2FA')) {
+        accShowStep('pwd');
+        accNote('Потрібен хмарний пароль 2FA.', false);
+      } else if (msg.includes('не зареєстровано') || up.includes('SIGN-UP') || up.includes('SIGNUP') || up.includes('NOT REGISTERED') || up.includes('UNOCCUPLICATED')) {
+        accShowStep('signup');
+        accNote(msg, false);
       } else {
+        accNote(msg, true);
         toast('Помилка коду', msg, 'error');
       }
+    }
+  });
+
+  $('#form-add-account-signup')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!window._pendingAccId) return;
+    const first = ($('#add-acc-signup-first').value || '').trim();
+    const last = ($('#add-acc-signup-last').value || '').trim();
+    if (!first) { toast('Помилка', "Введіть ім'я", 'error'); return; }
+    try {
+      await api(accPath(window._pendingAccId, '/auth/signup'), {
+        method: 'POST',
+        body: JSON.stringify({ first_name: first, last_name: last }),
+      });
+      await accDone('Новий акаунт створено!');
+    } catch (err) {
+      accNote(err.message, true);
+      toast('Помилка реєстрації', err.message, 'error');
     }
   });
 
@@ -1394,16 +1477,120 @@
     if (!window._pendingAccId) return;
 
     try {
-      await api(`/api/accounts/${encodeURIComponent(window._pendingAccId)}/auth/password`, {
+      await api(accPath(window._pendingAccId, '/auth/password'), {
         method: 'POST',
         body: JSON.stringify({ password }),
       });
-      toast('Успіх', '2FA пройдено! Новий акаунт авторизовано.', 'ok');
-      closeModal('#modal-account-add');
-      await loadAccounts();
-      await refreshStatus();
+      await accDone('2FA пройдено! Новий акаунт авторизовано.');
     } catch (err) {
+      accNote(err.message, true);
       toast('Помилка 2FA', err.message, 'error');
+    }
+  });
+
+  // ----- Per-account QR (same phone, official Telegram app) -----
+  let accQRTimer = null;
+  function accStopQR() {
+    if (accQRTimer) { clearInterval(accQRTimer); accQRTimer = null; }
+  }
+  function accSetQRLink(url, expires) {
+    const link = $('#add-acc-qr-link'), exp = $('#add-acc-qr-expires'), open = $('#btn-add-acc-qr-open');
+    if (!link || !open) return;
+    if (!url) {
+      link.hidden = true; link.textContent = '';
+      if (exp) { exp.hidden = true; exp.textContent = ''; }
+      open.style.opacity = '.5'; open.style.pointerEvents = 'none'; open.removeAttribute('href');
+      return;
+    }
+    link.hidden = false; link.textContent = url;
+    if (exp && expires) {
+      exp.hidden = false;
+      try { exp.textContent = 'Діє до ' + new Date(expires).toLocaleTimeString(); }
+      catch { exp.textContent = ''; }
+    }
+    open.style.opacity = '1'; open.style.pointerEvents = 'auto';
+    open.setAttribute('href', url);
+  }
+  async function accQRPollOnce() {
+    if (!window._pendingAccId) return;
+    try {
+      const st = await api(accPath(window._pendingAccId, '/auth/qr'));
+      const status = $('#add-acc-qr-status');
+      if (st && st.url) {
+        accSetQRLink(st.url, st.expires);
+        if (status) status.textContent = st.running ? 'Чекаю підтвердження в Telegram…' : 'Посилання готове.';
+      } else if (status) {
+        status.textContent = st && st.running ? 'Telegram готує посилання…' : 'Посилання ще не готове.';
+      }
+      const accs = await api('/api/accounts');
+      const me = Array.isArray(accs) ? accs.find((a) => a.id === window._pendingAccId) : null;
+      if (me && me.session === 'authorized') {
+        if (status) status.textContent = 'Підтверджено! Акаунт додано.';
+        await accDone('Новий акаунт авторизовано по QR!');
+      }
+    } catch (err) {
+      const status = $('#add-acc-qr-status');
+      if (status) status.textContent = 'Помилка статусу: ' + (err.message || err);
+    }
+  }
+  $('#btn-add-acc-qr-start')?.addEventListener('click', async () => {
+    const btn = $('#btn-add-acc-qr-start'), status = $('#add-acc-qr-status');
+    if (btn) { btn.disabled = true; btn.textContent = 'Запитуємо…'; }
+    try {
+      const id = await ensurePendingAcc('');
+      await api(accPath(id, '/auth/qr'), { method: 'POST' });
+      if (status) status.textContent = 'Запит надіслано, чекаю токен від Telegram…';
+      accSetQRLink('', '');
+      await accQRPollOnce();
+      accStopQR();
+      accQRTimer = setInterval(accQRPollOnce, 2000);
+    } catch (err) {
+      if (status) status.textContent = 'Помилка: ' + (err.message || err);
+      toast('QR-вхід', err.message || 'Не вдалося', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Отримати посилання для входу'; }
+    }
+  });
+  $('#btn-add-acc-qr-copy')?.addEventListener('click', async () => {
+    const url = ($('#add-acc-qr-link')?.textContent || '').trim();
+    if (!url) { toast('QR', 'Посилання ще немає', 'error'); return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('QR', 'Посилання скопійовано', 'ok');
+    } catch {
+      toast('QR', 'Не вдалося скопіювати', 'error');
+    }
+  });
+  $('#modal-account-add')?.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'modal-account-add') accStopQR();
+  });
+
+  // ----- Per-account session import -----
+  $('#form-add-account-import')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const session = $('#add-acc-session-input').value.trim();
+    if (!session) { toast('Помилка', 'Вставте рядок сесії', 'error'); return; }
+    if (session.length < 32) { toast('Помилка', 'Рядок сесії закороткий', 'error'); return; }
+    try {
+      const id = await ensurePendingAcc('');
+      await api(accPath(id, '/session/import'), { method: 'POST', body: JSON.stringify({ session }) });
+      await accDone('Сесію імпортовано. Перезапустіть ядро.');
+    } catch (err) {
+      toast('Помилка імпорту', err.message, 'error');
+    }
+  });
+
+  $('#form-add-account-import-web')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = $('#add-acc-web-input').value.trim();
+    const dc = parseInt($('#add-acc-web-dc')?.value || '0', 10) || 0;
+    if (!data) { toast('Помилка', 'Вставте JSON з букмарклета', 'error'); return; }
+    try {
+      const id = await ensurePendingAcc('');
+      const res = await api(accPath(id, '/session/import-web'), { method: 'POST', body: JSON.stringify({ dc, data }) });
+      await accDone(`Сесію імпортовано (DC ${res.dc}). Перезапустіть ядро.`);
+    } catch (err) {
+      toast('Помилка імпорту з Web', err.message, 'error');
     }
   });
 
