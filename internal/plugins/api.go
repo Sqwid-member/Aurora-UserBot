@@ -3,12 +3,14 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/ipc"
@@ -367,49 +369,68 @@ func isBlockedIP(ip net.IP) bool {
 	return false
 }
 
+var (
+	safeTransportOnce sync.Once
+	safeTransport     *http.Transport
+)
+
+func getSafeTransport() *http.Transport {
+	safeTransportOnce.Do(func() {
+		dialer := &net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}
+		safeTransport = &http.Transport{
+			Proxy: nil,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+				if err != nil {
+					return nil, err
+				}
+				if len(ips) == 0 {
+					return nil, fmt.Errorf("no IP addresses resolved for host %q", host)
+				}
+				var chosenIP net.IP
+				for _, ip := range ips {
+					if isBlockedIP(ip) {
+						return nil, fmt.Errorf("ssrf blocked: access to address %s is prohibited", ip.String())
+					}
+					if chosenIP == nil {
+						chosenIP = ip
+					}
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(chosenIP.String(), port))
+			},
+			MaxIdleConns:          64,
+			MaxIdleConnsPerHost:   8,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+	})
+	return safeTransport
+}
+
 func newSafeHTTPClient(timeout time.Duration) *http.Client {
-	dialer := &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-
-	transport := &http.Transport{
-		// Direct connection on purpose: ProxyFromEnvironment would send the
-		// request to the proxy IP, while our DialContext SSRF check would
-		// only see the proxy — the real target would go unchecked.
-		Proxy: nil,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-			if err != nil {
-				return nil, err
-			}
-			if len(ips) == 0 {
-				return nil, fmt.Errorf("no IP addresses resolved for host %q", host)
-			}
-			var chosenIP net.IP
-			for _, ip := range ips {
-				if isBlockedIP(ip) {
-					return nil, fmt.Errorf("ssrf blocked: access to address %s is prohibited", ip.String())
-				}
-				if chosenIP == nil {
-					chosenIP = ip
-				}
-			}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(chosenIP.String(), port))
-		},
-		MaxIdleConns:          16,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-
 	return &http.Client{
-		Transport: transport,
+		Transport: getSafeTransport(),
 		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+				return errors.New("redirect to non-http(s) scheme prohibited")
+			}
+			if strings.EqualFold(req.URL.Hostname(), "localhost") {
+				return errors.New("ssrf blocked: redirect to localhost is prohibited")
+			}
+			return nil
+		},
 	}
 }
 

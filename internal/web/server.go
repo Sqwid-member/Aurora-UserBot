@@ -330,6 +330,16 @@ func (s *Server) isCrossSite(r *http.Request) bool {
 		if !s.isAllowedHost(u.Host) {
 			return true
 		}
+		return false
+	}
+	if ref := r.Referer(); ref != "" {
+		u, err := url.Parse(ref)
+		if err != nil {
+			return true
+		}
+		if !s.isAllowedHost(u.Host) {
+			return true
+		}
 	}
 	return false
 }
@@ -1079,6 +1089,7 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
 	ping := time.NewTicker(20 * time.Second)
@@ -1112,6 +1123,8 @@ func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
 	ping := time.NewTicker(20 * time.Second)
