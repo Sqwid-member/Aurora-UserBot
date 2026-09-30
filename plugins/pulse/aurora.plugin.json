@@ -16,7 +16,8 @@
       "name": "pulse",
       "usage": "pulse",
       "description": "Показує лічильники плагіна",
-      "aliases": ["пульс"]
+      "aliases": ["пульс"],
+      "in_chat": true
     }
   ],
   "permissions": {

@@ -16,7 +16,8 @@
       "name": "stats",
       "usage": "stats",
       "description": "Показати статус і статистику юзербота",
-      "aliases": ["статус", "status"]
+      "aliases": ["статус", "status"],
+      "in_chat": true
     }
   ],
   "permissions": {},

@@ -1036,6 +1036,11 @@ func (a *App) getTG(id string) *tgc.Runtime {
 }
 
 func (a *App) emitForAccount(accID string, name string, data any) {
+	if name == proto.EventMessageNew {
+		if m, ok := data.(proto.Message); ok {
+			a.maybeChatCommand(accID, m)
+		}
+	}
 	a.Plugins.EmitForAccount(accID, name, data, func(accountID, pluginName string) bool {
 		return a.IsPluginEnabledForAccount(accountID, pluginName)
 	})
@@ -1044,6 +1049,67 @@ func (a *App) emitForAccount(accID string, name string, data any) {
 		Name:      name,
 		Data:      data,
 	})
+}
+
+// maybeChatCommand routes the owner's own "/command" messages typed in any
+// chat to the plugin that declared the command with in_chat=true. Unknown
+// commands are left alone. The update path must never block, so execution
+// happens in a goroutine.
+func (a *App) maybeChatCommand(accID string, m proto.Message) {
+	if !m.Out || m.ID == 0 {
+		return
+	}
+	text := strings.TrimSpace(m.Text)
+	if !strings.HasPrefix(text, "/") {
+		return
+	}
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(text, fields[0]))
+	go a.runChatCommand(accID, m, fields[0], rest)
+}
+
+func (a *App) runChatCommand(accID string, m proto.Message, name, rest string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	res, ok, err := a.Plugins.ChatCommand(ctx, func(plugin string) bool {
+		return a.IsPluginEnabledForAccount(accID, plugin)
+	}, name, rest)
+	if err != nil {
+		a.Log.Warn("chat command failed", logx.F("command", name), logx.F("error", err.Error()))
+		return
+	}
+	if !ok {
+		return
+	}
+	rt := a.getTG(accID)
+	if rt == nil {
+		return
+	}
+	peer := chatPeerRef(rt.Me(), m)
+	if res != "" {
+		if _, err := rt.Send(ctx, proto.SendRequest{Peer: peer, Text: res}); err != nil {
+			a.Log.Warn("chat command reply failed", logx.F("command", name), logx.F("error", err.Error()))
+			return
+		}
+	}
+	if err := rt.DeleteMessages(ctx, peer, []int{m.ID}); err != nil {
+		a.Log.Warn("chat command cleanup failed", logx.F("command", name), logx.F("error", err.Error()))
+	}
+}
+
+// chatPeerRef renders a message's peer in the form resolvePeer understands.
+func chatPeerRef(me *proto.User, m proto.Message) string {
+	if m.PeerType == "channel" {
+		return "-" + fmt.Sprintf("%d", m.PeerID)
+	}
+	if me != nil && m.PeerID == me.ID {
+		return "me"
+	}
+	return fmt.Sprintf("%d", m.PeerID)
 }
 
 func (a *App) IsPluginEnabledForAccount(accID, pluginName string) bool {

@@ -451,6 +451,46 @@ func (h *Host) Command(ctx context.Context, name, text string) (string, error) {
 	return res.Text, nil
 }
 
+// ChatCommand routes a command typed by the owner in a chat to the plugin
+// that declared it with InChat=true.
+//
+// ok=false means no running plugin offers this command for chat use — the
+// caller must leave the message alone (it might be addressed to BotFather
+// or just start with a slash). An error with ok=true means the command
+// exists but failed; the caller should log it, not the message.
+func (h *Host) ChatCommand(ctx context.Context, enabled func(plugin string) bool, name, text string) (res string, ok bool, err error) {
+	cmd, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(name), "/"), "@")
+	if cmd == "" {
+		return "", false, nil
+	}
+
+	h.mu.RLock()
+	var found bool
+	for _, pname := range h.order {
+		if enabled != nil && !enabled(pname) {
+			continue
+		}
+		inst := h.insts[pname]
+		if inst == nil || !inst.Running() {
+			continue
+		}
+		if c, ok := inst.Manifest.Command(cmd); ok && c.InChat {
+			found = true
+			break
+		}
+	}
+	h.mu.RUnlock()
+
+	if !found {
+		return "", false, nil
+	}
+	res, err = h.Command(ctx, cmd, text)
+	if err != nil {
+		return "", true, err
+	}
+	return res, true, nil
+}
+
 // Stats returns a snapshot of every installed plugin.
 func (h *Host) Stats() []Stats {
 	h.mu.RLock()

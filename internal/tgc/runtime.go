@@ -1059,6 +1059,39 @@ func (r *Runtime) Send(ctx context.Context, req proto.SendRequest) (proto.SendRe
 	return proto.SendResult{PeerID: info.ID, Text: req.Text}, nil
 }
 
+// DeleteMessages removes own messages, used to clean up chat-command
+// triggers after the result is posted.
+func (r *Runtime) DeleteMessages(ctx context.Context, peerRef string, ids []int) error {
+	r.mu.RLock()
+	client := r.client
+	r.mu.RUnlock()
+	if client == nil || !r.Ready() {
+		return errors.New("tgc: session is not ready")
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	peer, err := r.resolvePeer(ctx, peerRef)
+	if err != nil {
+		return err
+	}
+	if _, ok := peer.InputPeer().(*tg.InputPeerChannel); ok {
+		ch, ok := peer.(peers.Channel)
+		if !ok {
+			return fmt.Errorf("tgc: channel peer has no input channel")
+		}
+		_, err = client.API().ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
+			Channel: ch.InputChannel(),
+			ID:      ids,
+		})
+		return err
+	}
+	_, err = client.API().MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{
+		ID: ids,
+	})
+	return err
+}
+
 // History returns recent messages from a peer.
 func (r *Runtime) History(ctx context.Context, ref string, limit int) ([]proto.Message, error) {
 	r.mu.RLock()

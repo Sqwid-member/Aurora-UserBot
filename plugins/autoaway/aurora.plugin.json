@@ -16,7 +16,8 @@
       "name": "away",
       "usage": "away [хвилин]",
       "description": "Увімкнути або вимкнути авто-статус",
-      "aliases": ["авто"]
+      "aliases": ["авто"],
+      "in_chat": true
     }
   ],
   "permissions": {
