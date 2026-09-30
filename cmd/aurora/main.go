@@ -381,6 +381,18 @@ func cmdSend(layout paths.Layout, args []string) error {
 	if len(args) < 2 {
 		return errors.New("використання: aurora send <peer> <текст>")
 	}
+	peer := args[0]
+	text := strings.Join(args[1:], " ")
+
+	if client, err := newDaemonClient(layout); err == nil && client.isAlive() {
+		if err := client.send(peer, text); err != nil {
+			return fmt.Errorf("помилка надсилання через фоновий процес: %w", err)
+		}
+		fmt.Printf("✓ надіслано до %s (через фоновий процес)
+", peer)
+		return nil
+	}
+
 	a, err := mustApp(layout, "core")
 	if err != nil {
 		return err

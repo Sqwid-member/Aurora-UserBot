@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/sh
+#!/usr/bin/env sh
 # Remove Aurora. Pass --purge to delete the data directory as well.
 set -eu
 

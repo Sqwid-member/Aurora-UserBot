@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/sh
+#!/usr/bin/env sh
 # Aurora autostart on boot under Termux: termux-boot.
 #
 #   pkg install termux-boot

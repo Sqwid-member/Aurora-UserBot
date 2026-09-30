@@ -166,8 +166,12 @@ func cmdUpdate(layout paths.Layout) error {
 				defer shaResp.Body.Close()
 				if shaResp.StatusCode == http.StatusOK {
 					expectedBytes, _ := io.ReadAll(shaResp.Body)
-					expected := strings.TrimSpace(string(expectedBytes))
-					actual := hex.EncodeToString(hasher.Sum(nil))
+					expectedRaw := strings.TrimSpace(string(expectedBytes))
+					expected := ""
+					if fields := strings.Fields(expectedRaw); len(fields) > 0 {
+						expected = strings.ToLower(fields[0])
+					}
+					actual := strings.ToLower(hex.EncodeToString(hasher.Sum(nil)))
 					if expected != actual {
 						_ = os.Remove(tmpFile)
 						return fmt.Errorf("перевірка SHA256 не пройшла: очікувався %s, отримано %s", expected, actual)

@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # Aurora universal installer for Termux & Linux
 # Works offline (local file / Download folder) or online (GitHub Releases with GITHUB_TOKEN support).
 #

@@ -223,3 +223,7 @@ func (c *daemonClient) pluginAction(name, action string) error {
 func (c *daemonClient) togglePlugin(accountID, pluginName string) error {
 	return c.request("POST", fmt.Sprintf("/api/accounts/%s/plugins/%s/toggle", accountID, pluginName), nil, nil)
 }
+
+func (c *daemonClient) send(peer, text string) error {
+	return c.request("POST", "/api/send", map[string]string{"peer": peer, "text": text}, nil)
+}
