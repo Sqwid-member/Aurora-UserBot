@@ -1,8 +1,6 @@
 # build output
 /aurora
-/dist/
 /aurora.db
-*.tar.gz
 
 # plugin build artifacts
 plugins/*/hello
