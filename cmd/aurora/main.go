@@ -388,8 +388,7 @@ func cmdSend(layout paths.Layout, args []string) error {
 		if err := client.send(peer, text); err != nil {
 			return fmt.Errorf("помилка надсилання через фоновий процес: %w", err)
 		}
-		fmt.Printf("✓ надіслано до %s (через фоновий процес)
-", peer)
+		fmt.Printf("✓ надіслано до %s (через фоновий процес)\n", peer)
 		return nil
 	}
 
