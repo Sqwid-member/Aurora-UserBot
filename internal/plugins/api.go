@@ -21,13 +21,18 @@ const (
 	settingsNS  = "plugin:"
 )
 
-// bindAPI registers every host method on a freshly started plugin connection.
+// BindAPI registers every host method on a freshly started plugin connection.
+//
+// It is called twice per start — once the moment the transport is up (via
+// Options.Connect) and once after the handshake (via Host.Start). Registering
+// is idempotent, and the early call closes the race where a plugin's
+// plugin.load handler fires kv.get/ui.notify before the late call runs.
 //
 // Every method re-checks the plugin's manifest permissions, because a plugin
 // is just an untrusted process: it can write anything it likes to its own
 // stdout, and the only real barrier is what the host agrees to do on its
 // behalf.
-func (h *Host) bindAPI(p *Instance) {
+func (h *Host) BindAPI(p *Instance) {
 	m := p.Manifest
 	conn := func() *ipc.Conn {
 		p.mu.RLock()
@@ -97,6 +102,9 @@ func (h *Host) bindAPI(p *Instance) {
 		var req proto.KVRequest
 		if err := decode(raw, &req); err != nil {
 			return nil, err
+		}
+		if req.Key == "" {
+			return nil, ipc.NewError(ipc.CodeInvalidParams, "key is required")
 		}
 		if isReservedKey(req.Key) {
 			return nil, ipc.NewError(ipc.CodeForbidden, "key namespace %q is reserved; use settings.*", settingsNS)

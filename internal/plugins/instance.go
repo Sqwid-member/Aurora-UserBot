@@ -84,12 +84,18 @@ type Instance struct {
 type Options struct {
 	// Version is reported to plugins during the handshake.
 	Version string
-	// MemoryMB is the default address-space limit when a manifest omits one.
+	// MemoryMB is the default RLIMIT_DATA cap when a manifest omits one.
 	MemoryMB int
 	// StartTimeout bounds the handshake.
 	StartTimeout time.Duration
 	// StopGrace is how long a plugin gets to exit after plugin.unload.
 	StopGrace time.Duration
+	// Connect, when set, is called the moment the transport is up — before
+	// the handshake. The host uses it to register its API handlers early:
+	// a plugin may legally call kv.get or ui.notify from its plugin.load
+	// handler, and handlers bound only after the handshake would answer
+	// those with "unknown method" depending on goroutine scheduling.
+	Connect func(*Instance)
 	// MaxRestarts bounds automatic restarts before a plugin is parked.
 	MaxRestarts int
 	// Env is the host environment used to resolve the allowlist.
@@ -136,6 +142,10 @@ func (p *Instance) Start(ctx context.Context) error {
 	if p.state == StateRunning || p.state == StateStarting {
 		p.mu.Unlock()
 		return errors.New("plugins: already running")
+	}
+	if p.state == StateStopping {
+		p.mu.Unlock()
+		return errors.New("plugins: stopping, try again in a moment")
 	}
 	p.state = StateStarting
 	p.lastErr = ""
@@ -200,7 +210,25 @@ func (p *Instance) Start(ctx context.Context) error {
 	p.cmd = cmd
 	p.conn = conn
 	p.startedAt = time.Now()
+	// Drop events queued for a previous generation: after a crash and
+	// restart the plugin must not receive stale message.new frames.
+	drained := 0
+drain:
+	for {
+		select {
+		case <-p.queue:
+			drained++
+		default:
+			break drain
+		}
+	}
 	p.mu.Unlock()
+	if drained > 0 {
+		p.log.Debug("discarded stale queued events", logx.F("count", drained))
+	}
+	if p.opts.Connect != nil {
+		p.opts.Connect(p)
+	}
 	p.touch()
 
 	// stderr: never let a plugin's noisy debug output wedge the host.
@@ -432,6 +460,19 @@ func (p *Instance) finishedAt() time.Time {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.finished
+}
+
+// healthySince reports how long the current run has been up. The supervisor
+// uses it to forgive old crashes: a plugin that ran fine for a while earns
+// its restart budget back instead of parking forever after a handful of
+// transient failures spread over days.
+func (p *Instance) healthySince() time.Duration {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.state != StateRunning || p.startedAt.IsZero() {
+		return 0
+	}
+	return time.Since(p.startedAt)
 }
 
 // Emit queues an event for delivery. It never blocks: if the plugin is slow

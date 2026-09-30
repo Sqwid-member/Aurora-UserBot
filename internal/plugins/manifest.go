@@ -344,14 +344,15 @@ func (m *Manifest) Subscribed() []string {
 	return out
 }
 
-// Command looks a command spec up by name or alias.
+// Command looks a command spec up by name or alias, case-insensitively:
+// Telegram clients send /PULSE as readily as /pulse.
 func (m *Manifest) Command(name string) (CommandSpec, bool) {
 	for _, c := range m.Commands {
-		if c.Name == name {
+		if strings.EqualFold(c.Name, name) {
 			return c, true
 		}
 		for _, a := range c.Aliases {
-			if a == name {
+			if strings.EqualFold(a, name) {
 				return c, true
 			}
 		}

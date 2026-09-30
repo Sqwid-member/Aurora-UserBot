@@ -135,6 +135,9 @@ func New(layout paths.Layout, level logx.Level, color bool, quiet bool) (*App, e
 		StartTimeout: time.Duration(cfg.Get().Plugins.StartTimeoutSec) * time.Second,
 		StopGrace:    3 * time.Second,
 		MaxRestarts:  5,
+		Connect: func(p *plugins.Instance) {
+			a.Plugins.BindAPI(p)
+		},
 	})
 
 	return a, nil

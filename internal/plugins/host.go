@@ -73,7 +73,10 @@ func New(services Services, dir string, store *kv.Store, log *logx.Logger, opts 
 		opts.MaxRestarts = 5
 	}
 	if opts.MemoryMB <= 0 {
-		opts.MemoryMB = 128
+		// 256, not 128: V8 (Node) cannot even reserve its code range under
+		// a 128 MB RLIMIT_DATA and dies with SIGTRAP on start. The cap only
+		// triggers on genuine growth, so a higher default costs no RAM.
+		opts.MemoryMB = 256
 	}
 	return &Host{
 		root:     dir,
@@ -216,7 +219,7 @@ func (h *Host) Start(ctx context.Context, name string) error {
 	if err := inst.Start(ctx); err != nil {
 		return err
 	}
-	h.bindAPI(inst)
+	h.BindAPI(inst)
 	inst.restarts.Store(0)
 	go inst.Watchdog()
 	return nil
@@ -310,7 +313,17 @@ func (h *Host) supervise() {
 
 		for _, name := range h.Names() {
 			inst, ok := h.Get(name)
-			if !ok || inst.State() != StateFailed {
+			if !ok {
+				continue
+			}
+			// Forgive old crashes: a plugin that has been healthy for a
+			// while earns its restart budget back, so transient failures
+			// spread over days can never park it permanently.
+			if inst.State() == StateRunning && inst.restarts.Load() > 0 &&
+				inst.healthySince() > 10*time.Minute {
+				inst.restarts.Store(0)
+			}
+			if inst.State() != StateFailed {
 				continue
 			}
 			n := inst.restarts.Load()

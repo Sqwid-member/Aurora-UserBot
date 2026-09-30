@@ -153,3 +153,12 @@ func TestCommandLookupByAlias(t *testing.T) {
 		t.Error("unknown command must not resolve")
 	}
 }
+
+func TestCommandLookupCaseInsensitive(t *testing.T) {
+	m := &Manifest{Commands: []CommandSpec{{Name: "pulse", Aliases: []string{"Пульс"}}}}
+	for _, q := range []string{"pulse", "PULSE", "Pulse", "пульс", "ПУЛЬС"} {
+		if _, ok := m.Command(q); !ok {
+			t.Errorf("lookup %q failed", q)
+		}
+	}
+}
