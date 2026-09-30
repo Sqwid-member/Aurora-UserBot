@@ -181,7 +181,7 @@ type Plugin struct {
 	methods    map[string]CommandHandler
 	onStart    HookFunc
 	onStop     HookFunc
-	callTimout time.Duration
+	callTimeout time.Duration
 	ctx        context.Context
 	cancel     context.CancelFunc
 }
@@ -202,7 +202,7 @@ func New() *Plugin {
 		events:     map[string]EventHandler{},
 		commands:   map[string]CommandHandler{},
 		methods:    map[string]CommandHandler{},
-		callTimout: 30 * time.Second,
+		callTimeout: 30 * time.Second,
 	}
 }
 
@@ -210,7 +210,7 @@ func New() *Plugin {
 func (p *Plugin) Name() string { return p.name }
 
 // SetCallTimeout bounds every host API call. Default 30s.
-func (p *Plugin) SetCallTimeout(d time.Duration) { p.callTimout = d }
+func (p *Plugin) SetCallTimeout(d time.Duration) { p.callTimeout = d }
 
 // OnEvent registers a handler for a host event, e.g. "message.new".
 func (p *Plugin) OnEvent(name string, h EventHandler) {
@@ -445,28 +445,6 @@ func (p *Plugin) Run(args []string) error {
 
 	go p.readLoop()
 
-	var hello HostInfo
-	if err := p.call("plugin.hello", map[string]any{
-		"protocol": ProtocolVersion,
-		"args":     args,
-		"pid":      os.Getpid(),
-	}, &hello); err != nil {
-		return err
-	}
-	if hello.Protocol != ProtocolVersion {
-		return fmt.Errorf("aurora: protocol mismatch (host=%d, plugin=%d)", hello.Protocol, ProtocolVersion)
-	}
-	p.name = hello.Plugin
-
-	p.mu.Lock()
-	hook := p.onStart
-	p.mu.Unlock()
-	if hook != nil {
-		if err := hook(ctx); err != nil {
-			return err
-		}
-	}
-
 	<-ctx.Done()
 	return nil
 }
@@ -573,6 +551,18 @@ func (p *Plugin) dispatchHostRequest(msg rpcMessage) {
 	var handleErr error
 
 	switch msg.Method {
+	case "plugin.hello":
+		var info HostInfo
+		_ = json.Unmarshal(msg.Params, &info)
+		if info.Protocol != 0 && info.Protocol != ProtocolVersion {
+			handleErr = fmt.Errorf("aurora: protocol mismatch (host=%d, plugin=%d)", info.Protocol, ProtocolVersion)
+		} else {
+			if info.Plugin != "" {
+				p.name = info.Plugin
+			}
+			result = map[string]any{"ok": true}
+		}
+
 	case "plugin.load":
 		p.mu.Lock()
 		hook := p.onStart
@@ -673,7 +663,7 @@ func (p *Plugin) call(method string, params, out any) error {
 		return err
 	}
 
-	timer := time.NewTimer(p.callTimout)
+	timer := time.NewTimer(p.callTimeout)
 	defer timer.Stop()
 
 	select {
@@ -686,7 +676,7 @@ func (p *Plugin) call(method string, params, out any) error {
 		p.mu.Lock()
 		delete(p.pending, string(id))
 		p.mu.Unlock()
-		return fmt.Errorf("aurora: %s timed out after %s", method, p.callTimout)
+		return fmt.Errorf("aurora: %s timed out after %s", method, p.callTimeout)
 	case resp := <-ch:
 		if resp.Error != nil {
 			return resp.Error

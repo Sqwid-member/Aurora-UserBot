@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -466,8 +467,7 @@ func toFloat(v any) (float64, bool) {
 		f, err := n.Float64()
 		return f, err == nil
 	case string:
-		var f float64
-		_, err := fmt.Sscanf(strings.TrimSpace(n), "%f", &f)
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
 		return f, err == nil
 	}
 	return 0, false

@@ -78,7 +78,7 @@ func New(services Services, dir string, store *kv.Store, log *logx.Logger, opts 
 		// triggers on genuine growth, so a higher default costs no RAM.
 		opts.MemoryMB = 256
 	}
-	return &Host{
+	h := &Host{
 		root:     dir,
 		services: services,
 		kv:       store,
@@ -87,6 +87,10 @@ func New(services Services, dir string, store *kv.Store, log *logx.Logger, opts 
 		insts:    make(map[string]*Instance, 8),
 		stopCh:   make(chan struct{}),
 	}
+	if h.opts.Connect == nil {
+		h.opts.Connect = h.BindAPI
+	}
+	return h
 }
 
 // Root returns the plugin directory.
@@ -271,7 +275,7 @@ func (h *Host) StartAll(ctx context.Context, skip map[string]bool) (started []st
 	return started, failed
 }
 
-// StopAll stops every running plugin in reverse discovery order.
+// StopAll stops every running plugin concurrently.
 func (h *Host) StopAll(ctx context.Context) {
 	h.mu.Lock()
 	if h.stopped {
@@ -282,15 +286,22 @@ func (h *Host) StopAll(ctx context.Context) {
 	close(h.stopCh)
 	h.mu.Unlock()
 
-	for _, name := range h.Names() {
+	names := h.Names()
+	var wg sync.WaitGroup
+	for _, name := range names {
 		inst, ok := h.Get(name)
 		if !ok || !inst.Running() {
 			continue
 		}
-		sctx, cancel := context.WithTimeout(ctx, 6*time.Second)
-		_ = inst.Stop(sctx)
-		cancel()
+		wg.Add(1)
+		go func(p *Instance) {
+			defer wg.Done()
+			sctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+			defer cancel()
+			_ = p.Stop(sctx)
+		}(inst)
 	}
+	wg.Wait()
 	h.wg.Wait()
 }
 

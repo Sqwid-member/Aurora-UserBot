@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -376,6 +377,7 @@ func (p *Instance) stop(ctx context.Context) error {
 // supervise waits for the process and records the exit reason.
 func (p *Instance) supervise() {
 	defer close(p.done)
+	defer p.cancel()
 	p.mu.RLock()
 	cmd := p.cmd
 	p.mu.RUnlock()
@@ -414,6 +416,8 @@ func (p *Instance) dispatchLoop(writerEnd <-chan struct{}) {
 	for {
 		select {
 		case <-writerEnd:
+			return
+		case <-p.ctx.Done():
 			return
 		case ev := <-p.queue:
 			p.mu.RLock()
@@ -678,7 +682,7 @@ func (p *Instance) buildEnv() []string {
 	}
 	for _, k := range BaseEnv {
 		if v := get(k); v != "" {
-			env[k] = k + "=" + v
+			env[k] = v
 		}
 	}
 	// The plugin's HOME is its own directory: no accidental ~/.ssh access.
@@ -706,9 +710,10 @@ func (p *Instance) buildEnv() []string {
 	for k := range env {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 	out := make([]string, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, env[k])
+		out = append(out, k+"="+env[k])
 	}
 	return out
 }
