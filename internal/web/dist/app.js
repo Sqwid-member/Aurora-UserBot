@@ -470,8 +470,9 @@
       const wildCap = (p.events || []).includes('*')
         ? '<span class="cap-chip" title="Плагін отримує ВСІ події, включно з текстом усіх повідомлень" style="border-color:var(--md-error); color:var(--md-error);">читає все</span>'
         : '';
-      const memMB = p.memory_kb ? Math.round(p.memory_kb / 1024) : 0;
+      const memMB = p.memory_kb ? Math.max(1, Math.round(p.memory_kb / 1024)) : 0;
       const isRunning = p.state === 'running';
+      const procInfo = isRunning && p.pid ? `PID ${p.pid}` : 'процес зупинено';
 
       return `
         <div class="plugin-card" data-state="${esc(p.state)}">
@@ -503,7 +504,7 @@
             </div>
           </div>
           <div class="plugin-footer">
-            <span class="plugin-stats-text">RAM: ${memMB} MB • Подій: ${p.events_total || 0}</span>
+            <span class="plugin-stats-text">RAM: ${memMB} MB • Подій: ${p.events_delivered || 0} • ${procInfo}</span>
             <div class="plugin-actions">
               ${isRunning
                 ? `<button class="btn btn-sm" data-act="stop" data-name="${esc(p.name)}">Зупинити</button>`

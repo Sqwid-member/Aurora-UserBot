@@ -4,6 +4,7 @@ package plugins
 
 import (
 	"fmt"
+	"os"
 
 	"golang.org/x/sys/unix"
 )
@@ -56,6 +57,24 @@ func applyLimits(pid int, l Limits) []string {
 	if err := unix.Prlimit(pid, unix.RLIMIT_NOFILE, hard(256), nil); err != nil {
 		warnings = append(warnings, fmt.Sprintf("RLIMIT_NOFILE: %v", err))
 	}
-
 	return warnings
+
+}
+
+// rssKB returns the resident memory of a process in kilobytes by reading
+// /proc/<pid>/statm. It returns 0 when the process is gone or unreadable —
+// stats must never fail just because a plugin exited a moment ago.
+func rssKB(pid int) uint64 {
+	if pid <= 0 {
+		return 0
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/statm", pid))
+	if err != nil {
+		return 0
+	}
+	var size, resident uint64
+	if _, err := fmt.Sscanf(string(data), "%d %d", &size, &resident); err != nil {
+		return 0
+	}
+	return resident * uint64(os.Getpagesize()) / 1024
 }

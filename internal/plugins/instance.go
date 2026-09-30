@@ -509,6 +509,8 @@ type Stats struct {
 	Events      uint64   `json:"events_delivered"`
 	Dropped     uint64   `json:"events_dropped"`
 	OutputKB    uint64   `json:"output_kb"`
+	// MemoryKB is the plugin process RSS, 0 when not measurable.
+	MemoryKB    uint64   `json:"memory_kb,omitempty"`
 	LastError   string   `json:"last_error,omitempty"`
 	Subscribed  []string `json:"events,omitempty"`
 	Commands    []string `json:"commands,omitempty"`
@@ -542,6 +544,7 @@ func (p *Instance) Stats() Stats {
 		Events:      p.delivered.Load(),
 		Dropped:     p.dropped.Load(),
 		OutputKB:    p.outputBytes.Load() / 1024,
+		MemoryKB:    rssKB(pid),
 		LastError:   lastErr,
 		Subscribed:  p.Manifest.Subscribed(),
 		Permissions: p.Manifest.Permissions,
