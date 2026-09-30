@@ -10,7 +10,7 @@
     "command": "node",
     "args": ["autoaway.mjs"]
   },
-  "events": ["core.start", "message.new", "message.edited"],
+  "events": ["core.start", "message.new", "message.edited", "settings.changed"],
   "commands": [
     {
       "name": "away",
@@ -18,6 +18,24 @@
       "description": "Увімкнути або вимкнути авто-статус",
       "aliases": ["авто"],
       "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "enabled",
+      "type": "bool",
+      "title": "Увімкнено",
+      "description": "Автоматично ставити «Незаймай» після тиші",
+      "default": true
+    },
+    {
+      "key": "minutes",
+      "type": "number",
+      "title": "Хвилин тиші",
+      "description": "Через скільки хвилин без активності спрацьовує",
+      "default": 15,
+      "min": 1,
+      "max": 480
     }
   ],
   "permissions": {

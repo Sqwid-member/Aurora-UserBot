@@ -555,6 +555,9 @@ type Stats struct {
 	LastError  string   `json:"last_error,omitempty"`
 	Subscribed []string `json:"events,omitempty"`
 	Commands   []string `json:"commands,omitempty"`
+	// CommandDetails carries the full specs (usage, aliases, in_chat) for
+	// the info card; Commands stays a plain name list for compatibility.
+	CommandDetails []CommandSpec `json:"command_details,omitempty"`
 	// HasSettings reports whether the plugin declares a settings form.
 	HasSettings bool   `json:"has_settings,omitempty"`
 	Permissions any    `json:"permissions,omitempty"`
@@ -596,6 +599,7 @@ func (p *Instance) Stats() Stats {
 	}
 	for _, c := range p.Manifest.Commands {
 		s.Commands = append(s.Commands, c.Name)
+		s.CommandDetails = append(s.CommandDetails, c)
 	}
 	s.HasSettings = len(p.Manifest.Settings) > 0
 	return s

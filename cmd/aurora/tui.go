@@ -493,7 +493,14 @@ func (v *mainView) activate(id string) {
 	case "info":
 		c.app.SetView(newInfoView(c))
 	case "update":
-		c.run("оновлення", func() error { return quiet(func() error { return cmdUpdate(c.layout) }) })
+		c.run("оновлення", func() error {
+			if err := quiet(func() error { return cmdUpdate(c.layout) }); err != nil {
+				return err
+			}
+			// The binary on disk is new but this menu still runs the old
+			// code: replace ourselves so the whole CLI reloads.
+			return reexecSelf()
+		})
 	case "logout":
 		back := newMainView(c)
 		c.app.SetView(newConfirmView(c, "Вийти з акаунта Telegram?",
@@ -719,7 +726,11 @@ func cmdLegacyMenu(layout paths.Layout) error {
 			_ = cmdSetup(layout)
 			pressEnterToContinue(reader)
 		case "u", "update":
-			_ = cmdUpdate(layout)
+			if err := cmdUpdate(layout); err != nil {
+				fmt.Println("✖ Помилка:", err)
+			} else if err := reexecSelf(); err != nil {
+				fmt.Println("✖ Помилка:", err)
+			}
 			pressEnterToContinue(reader)
 		case "0":
 			fmt.Print("Ви дійсно бажаєте вийти з акаунта Telegram? [y/N]: ")

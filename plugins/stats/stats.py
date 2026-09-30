@@ -14,6 +14,8 @@ import time
 KV_KEY = "stats:counters"
 SAVE_EVERY = 25
 
+SETTINGS = {"title": "Статус Aurora", "show_today": True}
+
 _lock = threading.Lock()
 _seq = [0]
 _plugin_name = "stats"
@@ -95,6 +97,39 @@ def kv_save():
     _since_save[0] = 0
 
 
+def settings_get(key, default, timeout=10):
+    rid = _next_id()
+    send({"jsonrpc": "2.0", "id": rid,
+          "method": "settings.get", "params": {"key": key}})
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        line = sys.stdin.readline()
+        if not line:
+            return default
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("id") == rid:
+            res = msg.get("result") or {}
+            if res.get("found"):
+                return res.get("value", default)
+            return default
+        dispatch(msg)
+    return default
+
+
+def load_settings():
+    title = settings_get("title", "Статус Aurora")
+    today = settings_get("show_today", True)
+    SETTINGS["title"] = str(title) if isinstance(title, str) and title.strip() else "Статус Aurora"
+    SETTINGS["show_today"] = bool(today) if isinstance(today, bool) else True
+    log("info", f"settings: {SETTINGS}")
+
+
 def _today():
     return time.strftime("%Y-%m-%d")
 
@@ -137,14 +172,16 @@ def snapshot():
         session = f"офлайн ({_session_user})"
     else:
         session = "невідомо"
-    return (
-        f"Статус Aurora\n"
-        f"• плагін працює: {uptime}\n"
-        f"• сесія: {session} (сесій: {_sessions_total})\n"
-        f"• повідомлень: вхідних {_counters['msg_in']} / вихідних {_counters['msg_out']}\n"
-        f"• сьогодні: вхідних {_counters['day_in']} / вихідних {_counters['day_out']}\n"
-        f"• команд виконано: {_counters['commands']}"
-    )
+    lines = [
+        f"{SETTINGS['title']}",
+        f"• плагін працює: {uptime}",
+        f"• сесія: {session} (сесій: {_sessions_total})",
+        f"• повідомлень: вхідних {_counters['msg_in']} / вихідних {_counters['msg_out']}",
+    ]
+    if SETTINGS["show_today"]:
+        lines.append(f"• сьогодні: вхідних {_counters['day_in']} / вихідних {_counters['day_out']}")
+    lines.append(f"• команд виконано: {_counters['commands']}")
+    return "\n".join(lines)
 
 
 def on_event(ev):
@@ -173,6 +210,8 @@ def on_event(ev):
     elif name == "command.received":
         _counters["commands"] += 1
         _touch()
+    elif name == "settings.changed":
+        load_settings()
 
 
 def dispatch(msg):
@@ -188,6 +227,7 @@ def dispatch(msg):
                     _counters[k] = restored[k]
             _roll_day()
             log("info", f"counters restored: {restored}")
+        load_settings()
         log("info", "loaded")
         respond(msg, {"ok": True})
     elif method == "plugin.unload":

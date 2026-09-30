@@ -10,7 +10,7 @@
     "command": "python3",
     "args": ["echo.py"]
   },
-  "events": ["message.new", "core.start"],
+  "events": ["message.new", "core.start", "settings.changed"],
   "commands": [
     {
       "name": "echo",
@@ -18,6 +18,22 @@
       "description": "Повторює текст у цьому чаті",
       "aliases": ["ехо"],
       "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "enabled",
+      "type": "bool",
+      "title": "Увімкнено",
+      "description": "Реагувати на /echo у вхідних повідомленнях",
+      "default": true
+    },
+    {
+      "key": "reply_prefix",
+      "type": "text",
+      "title": "Префікс відповіді",
+      "description": "Додається перед повтореним текстом",
+      "default": ""
     }
   ],
   "permissions": {

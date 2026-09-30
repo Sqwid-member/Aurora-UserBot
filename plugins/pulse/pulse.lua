@@ -159,6 +159,40 @@ local function call(method, params)
   write({ jsonrpc = "2.0", id = request_id, method = method, params = params or {} })
 end
 
+local settings = { notify_on_start = true }
+
+local handle -- forward declaration: settings_get dispatches through it
+
+-- Synchronous settings.get: blocks reading stdin until our response
+-- arrives, dispatching anything else meanwhile.
+local function settings_get(key, fallback)
+  request_id = request_id + 1
+  local rid = request_id
+  write({ jsonrpc = "2.0", id = rid, method = "settings.get", params = { key = key } })
+  local deadline = os.time() + 10
+  while os.time() < deadline do
+    local line = io.read("*l")
+    if line == nil then return fallback end
+    if #line > 0 then
+      local ok, msg = pcall(json_decode, line)
+      if ok and type(msg) == "table" then
+        if msg.method == nil and msg.id == rid then
+          local res = msg.result
+          if type(res) == "table" and res.found then
+            local v = res.value
+            if v == nil then return fallback end
+            return v
+          end
+          return fallback
+        end
+        local success, err = pcall(handle, msg)
+        if not success then log("error", tostring(err)) end
+      end
+    end
+  end
+  return fallback
+end
+
 local function reply(msg, result, err)
   local frame = { jsonrpc = "2.0", id = msg.id }
   if err then
@@ -183,7 +217,7 @@ local function snapshot()
   )
 end
 
-local function handle(msg)
+handle = function(msg)
   local method = msg.method
 
   if method == "plugin.hello" then
@@ -191,7 +225,12 @@ local function handle(msg)
     reply(msg, { ok = true })
   elseif method == "plugin.load" then
     log("info", "loaded")
-    call("ui.notify", { title = "Pulse", text = "моніторинг увімкнено", level = "info" })
+    local notify = settings_get("notify_on_start", true)
+    if notify == nil then notify = true end
+    settings.notify_on_start = notify
+    if settings.notify_on_start then
+      call("ui.notify", { title = "Pulse", text = "моніторинг увімкнено", level = "info" })
+    end
     reply(msg, { ok = true })
   elseif method == "plugin.unload" then
     log("info", "unloading")
@@ -199,6 +238,12 @@ local function handle(msg)
     os.exit(0)
   elseif method == "event" then
     local ev = msg.params or {}
+    if ev.name == "settings.changed" then
+      local notify = settings_get("notify_on_start", true)
+      if notify == nil then notify = true end
+      settings.notify_on_start = notify
+      log("info", "settings reloaded: notify_on_start=" .. tostring(settings.notify_on_start))
+    end
     counters.events = counters.events + 1
     if ev.name == "message.new" then
       counters.messages = counters.messages + 1

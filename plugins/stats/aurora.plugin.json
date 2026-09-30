@@ -10,7 +10,7 @@
     "command": "python3",
     "args": ["stats.py"]
   },
-  "events": ["core.start", "session.started", "session.ended", "message.new", "command.received"],
+  "events": ["core.start", "session.started", "session.ended", "message.new", "command.received", "settings.changed"],
   "commands": [
     {
       "name": "stats",
@@ -18,6 +18,22 @@
       "description": "Показати статус і статистику юзербота",
       "aliases": ["статус", "status"],
       "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "title",
+      "type": "text",
+      "title": "Заголовок",
+      "description": "Перший рядок звіту команди stats",
+      "default": "Статус Aurora"
+    },
+    {
+      "key": "show_today",
+      "type": "bool",
+      "title": "Показувати «сьогодні»",
+      "description": "Окремий рядок лічильників за поточну добу",
+      "default": true
     }
   ],
   "permissions": {},

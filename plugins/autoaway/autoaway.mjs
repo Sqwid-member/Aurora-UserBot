@@ -26,6 +26,32 @@ const call = (method, params) => {
   write({ jsonrpc: '2.0', id: requestId, method, params: params ?? {} });
 };
 
+const pending = new Map();
+
+const callWait = (method, params, timeoutMs = 10000) => new Promise((resolve) => {
+  requestId += 1;
+  const id = requestId;
+  const timer = setTimeout(() => { pending.delete(id); resolve(null); }, timeoutMs);
+  pending.set(id, (msg) => { clearTimeout(timer); resolve(msg); });
+  write({ jsonrpc: '2.0', id, method, params: params ?? {} });
+});
+
+async function settingsGet(key, fallback) {
+  const resp = await callWait('settings.get', { key });
+  const res = resp?.result;
+  if (!res || !res.found) return fallback;
+  return res.value ?? fallback;
+}
+
+async function loadSettings() {
+  const enabled = await settingsGet('enabled', true);
+  const minutes = await settingsGet('minutes', 15);
+  if (typeof enabled === 'boolean') state.enabled = enabled;
+  const n = Number(minutes);
+  if (Number.isFinite(n) && n >= 1 && n <= 480) state.minutes = Math.round(n);
+  log('info', `settings: enabled=${state.enabled} minutes=${state.minutes}`);
+}
+
 const reply = (msg, result, err) => {
   const frame = { jsonrpc: '2.0', id: msg.id };
   if (err) frame.error = { code: -32000, message: err };
@@ -62,8 +88,8 @@ async function handle(msg) {
       break;
     }
     case 'plugin.load':
-      log('info', `loaded; away after ${state.minutes} min of silence`);
       reply(msg, { ok: true });
+      loadSettings().then(() => log('info', `loaded; away after ${state.minutes} min of silence`));
       break;
     case 'plugin.unload':
       log('info', 'unloading');
@@ -72,6 +98,10 @@ async function handle(msg) {
       break;
     case 'event': {
       const ev = msg.params ?? {};
+      if (ev.name === 'settings.changed') {
+        loadSettings();
+        break;
+      }
       if (ev.name === 'message.new' || ev.name === 'message.edited') {
         if (ev.data?.out) {
           state.lastActivity = Date.now();
@@ -90,9 +120,12 @@ async function handle(msg) {
         if (arg === 'off') state.enabled = false;
         else if (arg === 'on') state.enabled = true;
         else if (/^\d+$/.test(arg)) {
-          state.minutes = Number(arg);
+          state.minutes = Math.min(480, Math.max(1, Number(arg)));
           state.enabled = true;
         }
+        // Keep the panel form in sync with chat commands.
+        call('settings.set', { key: 'enabled', value: state.enabled });
+        call('settings.set', { key: 'minutes', value: state.minutes });
         reply(msg, { text: state.enabled
           ? `Авто-«Незаймай» увімкнено: ${state.minutes} хв тиші`
           : 'Авто-«Незаймай» вимкнено' });
@@ -114,6 +147,11 @@ rl.on('line', (line) => {
     msg = JSON.parse(line);
   } catch (err) {
     log('error', `bad json: ${err.message}`);
+    return;
+  }
+  if (msg.method === undefined && pending.has(msg.id)) {
+    pending.get(msg.id)(msg);
+    pending.delete(msg.id);
     return;
   }
   Promise.resolve(handle(msg)).catch((err) => log('error', err.stack || String(err)));

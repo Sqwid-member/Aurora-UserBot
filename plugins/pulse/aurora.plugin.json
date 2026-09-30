@@ -10,7 +10,7 @@
     "command": "lua",
     "args": ["pulse.lua"]
   },
-  "events": ["core.start", "core.stop", "session.started", "session.ended", "message.new"],
+  "events": ["core.start", "core.stop", "session.started", "session.ended", "message.new", "settings.changed"],
   "commands": [
     {
       "name": "pulse",
@@ -18,6 +18,15 @@
       "description": "Показує лічильники плагіна",
       "aliases": ["пульс"],
       "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "notify_on_start",
+      "type": "bool",
+      "title": "Сповіщати про запуск",
+      "description": "Показувати тост у панелі, коли моніторинг увімкнено",
+      "default": true
     }
   ],
   "permissions": {

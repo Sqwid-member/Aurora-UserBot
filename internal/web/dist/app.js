@@ -512,6 +512,7 @@
               }
               <button class="btn btn-sm" data-act="restart" data-name="${esc(p.name)}">Перезапуск</button>
               ${p.has_settings ? `<button class="btn btn-sm" data-settings="${esc(p.name)}">Налаштування</button>` : ''}
+              <button class="btn btn-sm" data-info="${esc(p.name)}">Інфо</button>
               <button class="btn btn-sm btn-danger" data-act="uninstall" data-name="${esc(p.name)}">Видалити</button>
             </div>
           </div>
@@ -644,6 +645,65 @@
   $('#plugins-container')?.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-settings]');
     if (btn) openPluginSettings(btn.dataset.settings);
+  });
+
+  // ---------- Plugin Info Card ----------
+  function fmtUptime(sec) {
+    sec = Math.max(0, Math.round(sec || 0));
+    const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+    if (d) return `${d} д ${h} год`;
+    if (h) return `${h} год ${m} хв`;
+    if (m) return `${m} хв ${sec % 60} с`;
+    return `${sec} с`;
+  }
+
+  function openPluginInfo(name) {
+    const p = (ALL_PLUGINS || []).find((x) => x.name === name);
+    const box = $('#pi-body');
+    if (!box) return;
+    if (!p) {
+      box.innerHTML = '<p class="auth-lead">Плагін не знайдено.</p>';
+    } else {
+      const cmds = p.command_details || [];
+      const cmdHTML = cmds.length ? cmds.map((c) => {
+        const aliases = (c.aliases || []).map((a) => `<code>/${esc(a)}</code>`).join(' ');
+        const chat = c.in_chat ? ' <span class="badge">працює з чату</span>' : '';
+        return `<div class="form-group" style="margin-bottom:10px;">
+          <div><code>/${esc(c.name)}</code>${aliases ? ' · ' + aliases : ''}${chat}</div>
+          <div class="form-help">${esc(c.usage || '')}${c.description ? ' — ' + esc(c.description) : ''}</div>
+        </div>`;
+      }).join('') : '<p class="auth-lead">Команд немає.</p>';
+      const events = (p.events || []).map((e) => `<code>${esc(e)}</code>`).join(' ') || '—';
+      const perms = p.permissions || {};
+      const tg = (perms.tg || []).map((c) => `<span class="cap-chip">tg:${esc(c)}</span>`).join(' ');
+      const net = perms.net ? '<span class="cap-chip">net:http</span>' : '';
+      const memMB = p.memory_kb ? Math.max(1, Math.round(p.memory_kb / 1024)) : 0;
+      box.innerHTML = `
+        <div class="plugin-card-header" style="margin-bottom:8px;">
+          <div class="plugin-name"><span>${esc(p.name)}</span>
+            <span class="status-dot ${p.state === 'running' ? 'active' : p.state === 'failed' ? 'error' : 'warning'}"></span>
+          </div>
+          <span class="plugin-runtime-badge ${esc(p.language || 'go')}">${esc(p.language || 'go')} · v${esc(p.version || '1.0.0')}</span>
+        </div>
+        <p>${esc(p.description || 'Немає опису')}</p>
+        <h4 style="margin:12px 0 6px;">Команди</h4>
+        ${cmdHTML}
+        <h4 style="margin:12px 0 6px;">Як працює</h4>
+        <p class="form-help">Реагує на події ядра: ${events}. Команди запускаються з панелі (розділ команд), з CLI або прямо з чату — ті, що з міткою «працює з чату», спрацьовують коли власник пише <code>/команда</code>. Власне повідомлення-тригер бот видаляє, а результат надсилає в той самий чат.</p>
+        <h4 style="margin:12px 0 6px;">Технічне</h4>
+        <p class="form-help">Автор: ${esc(p.author || '—')} · Шлях: <code>${esc(p.path || '')}</code><br>
+        Стан: ${esc(p.state)} · PID: ${p.pid || '—'} · Аптайм: ${fmtUptime(p.uptime_sec)} · RAM: ${memMB} MB<br>
+        Подій доставлено: ${p.events_delivered || 0} · Втрачено: ${p.events_dropped || 0} · Рестартів: ${p.restarts || 0}<br>
+        Дозволи: ${tg}${net} ${(!tg && !net) ? '—' : ''}</p>
+        ${p.last_error ? `<p class="auth-status err">${esc(p.last_error)}</p>` : ''}`;
+    }
+    $('#pi-title').textContent = `Плагін: ${name}`;
+    openModal('#modal-plugin-info');
+  }
+
+  $('#plugins-container')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-info]');
+    if (btn) openPluginInfo(btn.dataset.info);
   });
 
   $('#btn-ps-save')?.addEventListener('click', async () => {
