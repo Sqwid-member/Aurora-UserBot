@@ -1098,7 +1098,9 @@ func (a *App) runChatCommand(accID string, m proto.Message, name, rest string) {
 	}
 	if err := rt.DeleteMessages(ctx, peer, []int{m.ID}); err != nil {
 		a.Log.Warn("chat command cleanup failed", logx.F("command", name), logx.F("error", err.Error()))
+		return
 	}
+	a.Log.Info("chat command executed", logx.F("command", name), logx.F("peer", peer))
 }
 
 // chatPeerRef renders a message's peer in the form resolvePeer understands.
