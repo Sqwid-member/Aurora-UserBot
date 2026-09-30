@@ -40,7 +40,7 @@ local function json_encode(v)
       first = false
       parts[#parts + 1] = json_encode(tostring(k)) .. ":" .. json_encode(val)
     end
-    return "{" .. table.concat(parts, ",") .. "}"
+    return "{" .. table.concat(parts) .. "}"
   end
   return "null"
 end
@@ -90,6 +90,21 @@ local function json_decode(str)
     return num
   end
 
+  local function parse_array()
+    pos = pos + 1 -- opening bracket
+    local arr = {}
+    skip_ws()
+    if str:sub(pos, pos) == "]" then pos = pos + 1 return arr end
+    while pos <= #str do
+      arr[#arr + 1] = parse_value()
+      skip_ws()
+      local c = str:sub(pos, pos)
+      pos = pos + 1
+      if c == "]" then break end
+    end
+    return arr
+  end
+
   local function parse_table()
     pos = pos + 1
     local obj = {}
@@ -114,6 +129,7 @@ local function json_decode(str)
     skip_ws()
     local c = str:sub(pos, pos)
     if c == "{" then return parse_table() end
+    if c == "[" then return parse_array() end
     if c == '"' then return parse_string() end
     if c == "t" then pos = pos + 4 return true end
     if c == "f" then pos = pos + 5 return false end
@@ -193,7 +209,7 @@ local function handle(msg)
   elseif method == "command" then
     local params = msg.params or {}
     if params.name == "pulse" then
-      reply(msg, snapshot())
+      reply(msg, { text = snapshot() })
     else
       reply(msg, nil, "unknown command " .. tostring(params.name))
     end

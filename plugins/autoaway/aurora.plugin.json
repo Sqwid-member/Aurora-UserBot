@@ -23,6 +23,6 @@
     "tg": ["send", "resolve"]
   },
   "limits": {
-    "memory_mb": 128
+    "memory_mb": 384
   }
 }

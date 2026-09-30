@@ -93,9 +93,9 @@ async function handle(msg) {
           state.minutes = Number(arg);
           state.enabled = true;
         }
-        reply(msg, state.enabled
+        reply(msg, { text: state.enabled
           ? `Авто-«Незаймай» увімкнено: ${state.minutes} хв тиші`
-          : 'Авто-«Незаймай» вимкнено');
+          : 'Авто-«Незаймай» вимкнено' });
       } else {
         reply(msg, null, `unknown command ${p.name}`);
       }

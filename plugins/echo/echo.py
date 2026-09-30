@@ -116,7 +116,7 @@ def main() -> None:
             params = msg.get("params", {})
             if params.get("name") == "echo":
                 text = params.get("text", "").strip()
-                respond(msg, text or "бек")
+                respond(msg, {"text": text or "бек"})
             else:
                 respond(msg, error=f"unknown command {params.get('name')}")
 
