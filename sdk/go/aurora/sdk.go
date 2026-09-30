@@ -174,16 +174,16 @@ type Plugin struct {
 	writeMu sync.Mutex
 	seq     int64
 
-	mu         sync.Mutex
-	pending    map[string]chan rpcMessage
-	events     map[string]EventHandler
-	commands   map[string]CommandHandler
-	methods    map[string]CommandHandler
-	onStart    HookFunc
-	onStop     HookFunc
+	mu          sync.Mutex
+	pending     map[string]chan rpcMessage
+	events      map[string]EventHandler
+	commands    map[string]CommandHandler
+	methods     map[string]CommandHandler
+	onStart     HookFunc
+	onStop      HookFunc
 	callTimeout time.Duration
-	ctx        context.Context
-	cancel     context.CancelFunc
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 type rpcMessage struct {
@@ -198,10 +198,10 @@ type rpcMessage struct {
 // New creates a Plugin bound to stdin/stdout.
 func New() *Plugin {
 	return &Plugin{
-		pending:    map[string]chan rpcMessage{},
-		events:     map[string]EventHandler{},
-		commands:   map[string]CommandHandler{},
-		methods:    map[string]CommandHandler{},
+		pending:     map[string]chan rpcMessage{},
+		events:      map[string]EventHandler{},
+		commands:    map[string]CommandHandler{},
+		methods:     map[string]CommandHandler{},
 		callTimeout: 30 * time.Second,
 	}
 }
