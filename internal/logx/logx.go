@@ -66,12 +66,12 @@ func ParseLevel(s string) (Level, bool) {
 	}
 }
 
-var levelColor = map[Level]string{
-	LevelTrace: "\x1b[90m",
-	LevelDebug: "\x1b[36m",
-	LevelInfo:  "\x1b[32m",
-	LevelWarn:  "\x1b[33m",
-	LevelError: "\x1b[31m",
+var levelColor = map[string]string{
+	"TRACE": "\x1b[90m",
+	"DEBUG": "\x1b[36m",
+	"INFO":  "\x1b[32m",
+	"WARN":  "\x1b[33m",
+	"ERROR": "\x1b[31m",
 }
 
 const reset = "\x1b[0m"
@@ -241,7 +241,7 @@ func (l *Logger) write(rec Record) {
 	b.WriteString(rec.Time.Format("15:04:05.000"))
 	b.WriteByte(' ')
 	if l.color {
-		if c, ok := levelColor[parseLevel(rec.Level)]; ok {
+		if c, ok := levelColor[rec.Level]; ok {
 			b.WriteString(c)
 		}
 	}

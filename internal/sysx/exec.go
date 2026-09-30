@@ -68,12 +68,16 @@ func Command(name string, args ...string) *exec.Cmd {
 		}
 	}
 
-	cmd := exec.Command(resolved, args...)
 	if lookErr != nil {
-		// Set LookPathErr directly so cmd.Run()/Start() returns clean error
-		// without calling Go's LookPath
-		cmd.Args[0] = name
+		return &exec.Cmd{
+			Path: name,
+			Args: append([]string{name}, args...),
+			Err:  lookErr,
+		}
 	}
+
+	cmd := exec.Command(resolved, args...)
+	cmd.Args[0] = name
 	return cmd
 }
 
@@ -89,9 +93,15 @@ func CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd 
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, resolved, args...)
 	if lookErr != nil {
-		cmd.Args[0] = name
+		return &exec.Cmd{
+			Path: name,
+			Args: append([]string{name}, args...),
+			Err:  lookErr,
+		}
 	}
+
+	cmd := exec.CommandContext(ctx, resolved, args...)
+	cmd.Args[0] = name
 	return cmd
 }

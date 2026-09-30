@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -967,13 +968,18 @@ func (r *Runtime) ImportSession(telethonSession string) error {
 	if err := loader.Save(context.Background(), data); err != nil {
 		return err
 	}
+	r.markSignedIn()
 	return nil
 }
 
 // ImportWebSession replaces the stored session from a Telegram Web
 // localStorage export (see ParseWebExport). overrideDC is 0 for auto.
 func (r *Runtime) ImportWebSession(payload string, overrideDC int) (int, error) {
-	return ImportWebExport(r.opts.SessionPath, payload, overrideDC)
+	dc, err := ImportWebExport(r.opts.SessionPath, payload, overrideDC)
+	if err == nil {
+		r.markSignedIn()
+	}
+	return dc, err
 }
 
 // ExportSession renders the stored session as a Telethon string.
@@ -1195,6 +1201,9 @@ func (r *Runtime) resolvePeer(ctx context.Context, ref string) (peers.Peer, erro
 					return p, nil
 				}
 			}
+			if p, err := pm.ResolveChatID(ctx, -id); err == nil {
+				return p, nil
+			}
 		} else {
 			if p, err := pm.ResolveChannelID(ctx, id); err == nil {
 				return p, nil
@@ -1219,32 +1228,7 @@ func (r *Runtime) resolvePeer(ctx context.Context, ref string) (peers.Peer, erro
 }
 
 func parseID(s string) (int64, error) {
-	if s == "" {
-		return 0, errors.New("empty")
-	}
-	neg := false
-	i := 0
-	if s[0] == '-' {
-		neg, i = true, 1
-	}
-	if i >= len(s) {
-		return 0, errors.New("empty")
-	}
-	var v int64
-	for ; i < len(s); i++ {
-		c := s[i]
-		if c < '0' || c > '9' {
-			return 0, errors.New("not numeric")
-		}
-		v = v*10 + int64(c-'0')
-		if v > 1<<52 {
-			return 0, errors.New("too large")
-		}
-	}
-	if neg {
-		v = -v
-	}
-	return v, nil
+	return strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 }
 
 func (r *Runtime) infoOf(p peers.Peer) proto.PeerInfo {

@@ -26,8 +26,9 @@ type App struct {
 	wake chan struct{}
 	done chan struct{}
 
-	mu   sync.Mutex
-	view View
+	quitOnce sync.Once
+	mu       sync.Mutex
+	view     View
 
 	prev []cell
 	buf  byteBuf
@@ -80,11 +81,9 @@ func (a *App) Wake() {
 
 // Quit stops the run loop and restores the terminal.
 func (a *App) Quit() {
-	select {
-	case <-a.done:
-	default:
+	a.quitOnce.Do(func() {
 		close(a.done)
-	}
+	})
 }
 
 // Run renders until Quit is called or stdin closes.

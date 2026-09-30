@@ -216,7 +216,13 @@ func (a *App) runTelegramForAccount(ctx context.Context, id string, tg *tgc.Runt
 			return
 		}
 		if err == nil {
-			return
+			a.Log.Info("account session ended, reconnecting", logx.F("acc", id))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+				continue
+			}
 		}
 
 		// An unauthorized account restarts cheaply and the user is usually
@@ -815,19 +821,17 @@ func (a *App) SubscribeLogs() (<-chan logx.Record, func()) {
 func (a *App) SubscribeEvents() (<-chan proto.Event, func()) {
 	ch := make(chan proto.Event, 256)
 	a.mu.Lock()
-	id := a.nextSub
-	a.nextSub++
-	a.eventSubs[id] = ch
-	// Replay a short backlog so a freshly opened tab is not blind.
-	backlog := append([]proto.Event(nil), a.notifyQueue...)
-	a.mu.Unlock()
-
-	for _, ev := range backlog {
+	// Replay backlog under lock before registering for live events so delivery is strictly ordered.
+	for _, ev := range a.notifyQueue {
 		select {
 		case ch <- ev:
 		default:
 		}
 	}
+	id := a.nextSub
+	a.nextSub++
+	a.eventSubs[id] = ch
+	a.mu.Unlock()
 
 	var once sync.Once
 	cancel := func() {
