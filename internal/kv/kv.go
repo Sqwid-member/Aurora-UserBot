@@ -33,8 +33,9 @@ var ErrNotFound = errors.New("kv: key not found")
 type Store struct {
 	path string
 
-	mu   sync.RWMutex
-	data map[string]json.RawMessage
+	flushMu sync.Mutex
+	mu      sync.RWMutex
+	data    map[string]json.RawMessage
 
 	dirty   bool
 	closed  bool
@@ -211,7 +212,9 @@ func (s *Store) List(prefix string) map[string]json.RawMessage {
 	out := make(map[string]json.RawMessage)
 	for k, v := range s.data {
 		if strings.HasPrefix(k, prefix) {
-			out[k] = v
+			cp := make(json.RawMessage, len(v))
+			copy(cp, v)
+			out[k] = cp
 		}
 	}
 	return out
@@ -226,8 +229,11 @@ func (s *Store) Len() int {
 
 // Flush writes the store to disk atomically.
 func (s *Store) Flush() error {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+
 	s.mu.Lock()
-	if !s.dirty || s.closed && len(s.data) == 0 {
+	if !s.dirty {
 		s.mu.Unlock()
 		return nil
 	}

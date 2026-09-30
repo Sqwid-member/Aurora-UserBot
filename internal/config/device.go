@@ -240,7 +240,7 @@ func isTermuxEnv() bool {
 	if runtime.GOOS != "linux" {
 		return false
 	}
-	return strings.HasPrefix(os.Getenv("PREFIX"), "/data/data/com.termux/")
+	return os.Getenv("TERMUX_VERSION") != "" || strings.Contains(os.Getenv("PREFIX"), "com.termux")
 }
 
 // ApplyDetectedDevice fills empty device fields from the real phone.

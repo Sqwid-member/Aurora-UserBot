@@ -122,5 +122,5 @@ func (l Layout) Ensure() error {
 
 // IsTermux reports whether the process is executing inside the Termux environment.
 func IsTermux() bool {
-	return os.Getenv("PREFIX") == "/data/data/com.termux/files/usr"
+	return os.Getenv("TERMUX_VERSION") != "" || strings.Contains(os.Getenv("PREFIX"), "com.termux")
 }

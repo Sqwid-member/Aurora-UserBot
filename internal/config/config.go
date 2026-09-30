@@ -221,10 +221,11 @@ func NewToken() string {
 
 // Store is a concurrency-safe, atomically-persisted config holder.
 type Store struct {
-	path string
-	mu   sync.RWMutex
-	cfg  *Config
-	log  *logx.Logger
+	path    string
+	writeMu sync.Mutex
+	mu      sync.RWMutex
+	cfg     *Config
+	log     *logx.Logger
 }
 
 // Open loads the config from path, creating it with defaults if missing.
@@ -264,19 +265,25 @@ func Open(path string, log *logx.Logger) (*Store, error) {
 // Path returns the backing file path.
 func (s *Store) Path() string { return s.path }
 
+// clone returns a deep copy of the configuration.
+func (c *Config) clone() Config {
+	out := *c
+	out.Accounts = make([]AccountConfig, len(c.Accounts))
+	for i := range c.Accounts {
+		out.Accounts[i] = c.Accounts[i]
+		if c.Accounts[i].EnabledPlugins != nil {
+			out.Accounts[i].EnabledPlugins = append([]string(nil), c.Accounts[i].EnabledPlugins...)
+		}
+	}
+	out.Plugins.Disabled = append([]string(nil), c.Plugins.Disabled...)
+	return out
+}
+
 // Get returns a snapshot of the current config.
 func (s *Store) Get() Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := *s.cfg
-	// Deep-copy slices: the caller must not share backing arrays with the
-	// store, otherwise ToggleAccountPlugin races with concurrent readers.
-	out.Accounts = append([]AccountConfig(nil), s.cfg.Accounts...)
-	out.Plugins.Disabled = append([]string(nil), s.cfg.Plugins.Disabled...)
-	for i := range out.Accounts {
-		out.Accounts[i].EnabledPlugins = append([]string(nil), s.cfg.Accounts[i].EnabledPlugins...)
-	}
-	return out
+	return s.cfg.clone()
 }
 
 // Update mutates the config under lock and persists the result.
@@ -290,9 +297,7 @@ func (s *Store) Update(fn func(*Config)) (err error) {
 	}()
 	fn(s.cfg)
 	s.cfg.normalize()
-	c := *s.cfg
-	c.Accounts = append([]AccountConfig(nil), s.cfg.Accounts...)
-	c.Plugins.Disabled = append([]string(nil), s.cfg.Plugins.Disabled...)
+	c := s.cfg.clone()
 	s.mu.Unlock()
 	return s.write(c)
 }
@@ -309,6 +314,9 @@ func (s *Store) Replace(c Config) error {
 func (s *Store) save() error { return s.write(*s.cfg) }
 
 func (s *Store) write(c Config) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	c.Version = Version
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
@@ -513,8 +521,11 @@ func (c *Config) ToggleAccountPlugin(accID, pluginName string, allPlugins []stri
 				}
 			}
 			if idx >= 0 {
-				// remove
-				acc.EnabledPlugins = append(acc.EnabledPlugins[:idx], acc.EnabledPlugins[idx+1:]...)
+				// remove without mutating slice in-place
+				newList := make([]string, 0, len(acc.EnabledPlugins)-1)
+				newList = append(newList, acc.EnabledPlugins[:idx]...)
+				newList = append(newList, acc.EnabledPlugins[idx+1:]...)
+				acc.EnabledPlugins = newList
 				return false, nil
 			}
 			// add

@@ -90,3 +90,60 @@ func TestValueSizeIsCapped(t *testing.T) {
 		t.Fatalf("err = %v, want ErrTooLarge", err)
 	}
 }
+
+func TestListDoesNotAliasMemory(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := store.Set("key1", "hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	list := store.List("key")
+	if len(list) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(list))
+	}
+
+	// Mutate returned slice
+	raw := list["key1"]
+	raw[0] = 'X'
+
+	// Verify store data is not mutated
+	var s string
+	found, err := store.Get("key1", &s)
+	if err != nil || !found || s != "hello" {
+		t.Fatalf("store memory was corrupted by list mutation: found=%v s=%q err=%v", found, s, err)
+	}
+}
+
+func TestEmptyStorePersistsOnCloseAfterDelete(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set("temp", "val"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	store.Delete("temp")
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+
+	if reopened.Len() != 0 {
+		t.Fatalf("store should be empty after deletion, got %d keys", reopened.Len())
+	}
+}
