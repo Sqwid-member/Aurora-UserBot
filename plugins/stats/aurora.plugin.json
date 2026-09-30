@@ -1,0 +1,26 @@
+{
+  "name": "stats",
+  "version": "1.0.0",
+  "description": "Статус і статистика юзербота: аптайм, сесія, лічильники повідомлень і команд.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["stats", "status", "monitoring"],
+  "runtime": {
+    "command": "python3",
+    "args": ["stats.py"]
+  },
+  "events": ["core.start", "session.started", "session.ended", "message.new", "command.received"],
+  "commands": [
+    {
+      "name": "stats",
+      "usage": "stats",
+      "description": "Показати статус і статистику юзербота",
+      "aliases": ["статус", "status"]
+    }
+  ],
+  "permissions": {},
+  "limits": {
+    "memory_mb": 64
+  }
+}
