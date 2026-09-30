@@ -497,23 +497,23 @@ func (p *Instance) Watchdog() {
 
 // Stats is the per-plugin snapshot shown in the control panel.
 type Stats struct {
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Author      string   `json:"author"`
-	Language    string   `json:"language"`
-	State       string   `json:"state"`
-	PID         int      `json:"pid,omitempty"`
-	UptimeSec   int64    `json:"uptime_sec"`
-	Restarts    int32    `json:"restarts"`
-	Events      uint64   `json:"events_delivered"`
-	Dropped     uint64   `json:"events_dropped"`
-	OutputKB    uint64   `json:"output_kb"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Author      string `json:"author"`
+	Language    string `json:"language"`
+	State       string `json:"state"`
+	PID         int    `json:"pid,omitempty"`
+	UptimeSec   int64  `json:"uptime_sec"`
+	Restarts    int32  `json:"restarts"`
+	Events      uint64 `json:"events_delivered"`
+	Dropped     uint64 `json:"events_dropped"`
+	OutputKB    uint64 `json:"output_kb"`
 	// MemoryKB is the plugin process RSS, 0 when not measurable.
-	MemoryKB    uint64   `json:"memory_kb,omitempty"`
-	LastError   string   `json:"last_error,omitempty"`
-	Subscribed  []string `json:"events,omitempty"`
-	Commands    []string `json:"commands,omitempty"`
+	MemoryKB   uint64   `json:"memory_kb,omitempty"`
+	LastError  string   `json:"last_error,omitempty"`
+	Subscribed []string `json:"events,omitempty"`
+	Commands   []string `json:"commands,omitempty"`
 	// HasSettings reports whether the plugin declares a settings form.
 	HasSettings bool   `json:"has_settings,omitempty"`
 	Permissions any    `json:"permissions,omitempty"`
