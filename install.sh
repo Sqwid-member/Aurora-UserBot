@@ -89,6 +89,7 @@ find_local_package() {
             local found
             found="$(find "$tmp" -type f -name "aurora*" ! -name "*.tar.gz" | head -n 1)"
             if [ -n "$found" ] && [ -f "$found" ]; then
+              rm -f "$BIN_DIR/aurora" 2>/dev/null || true
               cp "$found" "$BIN_DIR/aurora"
               chmod 755 "$BIN_DIR/aurora"
               if [ -d "$tmp/plugins" ]; then
@@ -99,6 +100,7 @@ find_local_package() {
             fi
           fi
         else
+          rm -f "$BIN_DIR/aurora" 2>/dev/null || true
           cp "$d/$f" "$BIN_DIR/aurora"
           chmod 755 "$BIN_DIR/aurora"
           rm -rf "$tmp"
@@ -173,8 +175,9 @@ fetch_prebuilt() {
           local found
           found="$(find "$tmp" -type f -name "aurora*" ! -name "*.bin" ! -name "*.tar.gz" | head -n 1)"
           if [ -n "$found" ] && [ -f "$found" ]; then
+                        rm -f "$BIN_DIR/aurora" 2>/dev/null || true
             mv "$found" "$BIN_DIR/aurora"
-            chmod 755 "$BIN_DIR/aurora"
+            chmod 755 "$BIN_DIR/aurora" 
             if [ -d "$tmp/plugins" ]; then
               cp -r "$tmp/plugins/"* "$DATA_DIR/plugins/" 2>/dev/null || true
             fi
@@ -183,8 +186,9 @@ fetch_prebuilt() {
           fi
         fi
       else
+                rm -f "$BIN_DIR/aurora" 2>/dev/null || true
         mv "$tmp/archive.bin" "$BIN_DIR/aurora"
-        chmod 755 "$BIN_DIR/aurora"
+        chmod 755 "$BIN_DIR/aurora" 
         rm -rf "$tmp"
         return 0
       fi
@@ -221,6 +225,13 @@ build_from_source() {
     mkdir -p "$(dirname "$src")"
     git clone --depth 1 "$clone_url" "$src" || die "git clone не вдався"
   fi
+
+  # Safely replace binary without "Text file busy"
+  if command -v "$BIN_DIR/aurora" >/dev/null 2>&1; then
+    "$BIN_DIR/aurora" stop >/dev/null 2>&1 || true
+  fi
+  pkill -f "$BIN_DIR/aurora" >/dev/null 2>&1 || true
+  rm -f "$BIN_DIR/aurora" 2>/dev/null || true
 
   if [ -f "$src/prebuilt/aurora-${GOARCH}" ]; then
     say "Використовую перевірений готовий бінарник: prebuilt/aurora-${GOARCH}"
