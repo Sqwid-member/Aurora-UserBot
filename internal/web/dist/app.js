@@ -169,8 +169,19 @@
         e.stopPropagation();
         const opening = !pop.classList.contains('open');
         pop.classList.toggle('open', opening);
-        if (opening) whenReady(() => { renderList(); sync(); });
-        else sync();
+        if (opening) {
+          const btnRect = btnTheme.getBoundingClientRect();
+          if (btnRect.left < 280) {
+            pop.style.right = 'auto';
+            pop.style.left = '0';
+            pop.style.transformOrigin = 'top left';
+          } else {
+            pop.style.right = '0';
+            pop.style.left = 'auto';
+            pop.style.transformOrigin = 'top right';
+          }
+          whenReady(() => { renderList(); sync(); });
+        } else sync();
       };
       document.addEventListener('click', (e) => {
         if (!pop.contains(e.target) && e.target !== btnTheme) close();

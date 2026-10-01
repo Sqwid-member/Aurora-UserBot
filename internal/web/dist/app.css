@@ -545,7 +545,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.md3-slider-track-wrap { position: relative; padding: 8px 0 4px; }
+.md3-slider-track-wrap { position: relative; padding: 8px 0 4px; touch-action: pan-y; }
 
 .md3-slider-input {
   -webkit-appearance: none;
