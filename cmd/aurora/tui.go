@@ -189,12 +189,12 @@ func (c *ctl) refresh() {
 	}()
 }
 
-// tick advances the spinner and refreshes twice a second.
+// tick advances the spinner at 100ms and refreshes daemon state every ~1.5s.
 func (c *ctl) tick() {
 	c.mu.Lock()
 	c.spins++
 	c.ticks++
-	do := c.ticks%2 == 0
+	do := c.ticks%15 == 0
 	c.mu.Unlock()
 	if do {
 		c.refresh()
@@ -271,6 +271,10 @@ func quiet(fn func() error) error {
 type mainView struct {
 	c    *ctl
 	list tui.List
+}
+
+func (v *mainView) Tick() {
+	v.c.tick()
 }
 
 func newMainView(c *ctl) *mainView {

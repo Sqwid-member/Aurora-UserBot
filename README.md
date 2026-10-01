@@ -1,342 +1,169 @@
 # Aurora 🌌
 
-Модульний Telegram **юзербот** на Go. Один статичний бінарник, який працює
-скрізь, де працює Go — зокрема **прямо в Termux на телефоні**. Плагіни
-пишуться будь-якою мовою. Керується з локального сайту.
+> **Language / Мова / Язык:** **English** • [Українська](README.uk.md) • [Русский](README.ru.md)
+
+A modular Telegram **userbot** written in Go. A single static binary that runs
+anywhere Go runs — including **directly in Termux on your Android phone**.
+Plugins can be written in any programming language. Controlled via a local web panel.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  aurora (один бінарник, ~12 МБ, CGO вимкнено)                │
+│  aurora (single binary, ~12 MB, CGO disabled)                │
 │                                                              │
 │   ┌──────────┐  JSON-RPC  ┌──────────────┐  stdio  ┌───────┐ │
-│   │   MTProto│──(stdio)──▶│ плагін-менеджер│◀────────│ плагін│ │
-│   │  (gotd)  │◀──────────│  + ліміти     │────────▶│  .go  │ │
-│   └──────────┘  події     └──────────────┘         │  .py  │ │
+│   │   MTProto│──(stdio)──▶│plugin-manager│◀────────│ plugin│ │
+│   │  (gotd)  │◀──────────│  + limits     │────────▶│  .go  │ │
+│   └──────────┘   events   └──────────────┘         │  .py  │ │
 │        │                                             │  .lua │ │
 │        │                                             │  .mjs │ │
 │   ┌────▼─────┐   HTTP/SSE   ┌────────────────────┐  └───────┘ │
-│   │   панель │◀─────────────│ 127.0.0.1:8420     │            │
+│   │   panel  │◀─────────────│ 127.0.0.1:8420     │            │
 │   └──────────┘              └────────────────────┘            │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Що саме тут важливо
+## Key Features
 
-| Вимога | Рішення |
-|--------|---------|
-| **Максимальна швидкодія** | Go, `CGO_ENABLED=0`, без фреймворків. Розбір апдейтів не робить жодних мережевих викликів — тільки кеш імен і map-и. Черга подій обмежена, доставка неблокуюча. |
-| **Мінімум ОП** | `debug.SetMemoryLimit` за замовчуванням 96 МБ, трохи goroutine, лог у кільцевий буфер, `kv` — один JSON у пам'яті, панель — один HTML без CDN. `RLIMIT_DATA` на кожен плагін (не `RLIMIT_AS` — той убиває Go/Python/Node на старті, пояснення в [docs/PROTOCOL.md](docs/PROTOCOL.md)). |
-| **Модульність** | Ядро не знає про конкретні плагіни. Плагін — звичайний виконуваний файл, спілкується через JSON-RPC, має маніфест, дозволи, ліміти та життєвий цикл. |
-| **Плагіни на кількох мовах** | Go SDK (без залежностей), Python, Node.js, Lua — приклади в репозиторії. Протокол — JSON у рядках, тож підходить будь-що. |
-| **Termux** | Ставиться за 2-3 секунди з готового бінарника в `$PREFIX/bin`, фоновий режим `aurora start` із `termux-wake-lock`, інтерактивний `aurora setup`, панель відкривається автоматично. |
-| **Просте встановлення** | Один curl-рядок або `make install`. Немає зовнішніх залежностей, баз даних, демонів. |
-| **Локальний сайт** | Вбудований SPA: статус, плагіни, вхід, чат, логи, налаштування. Токен у cookie, слухає лише loopback. |
+| Requirement | Implementation |
+|---|---|
+| **Maximum Performance** | Go, `CGO_ENABLED=0`, no heavyweight frameworks. Parsing updates performs no network roundtrips — only name caches and in-memory hash maps. Event queues are bounded; delivery is non-blocking. |
+| **Minimal RAM Footprint** | `debug.SetMemoryLimit` defaults to 96 MB, minimal goroutine count, ring-buffered logging, `kv` is in-memory JSON, web panel is a single self-contained HTML page without CDN dependencies. `RLIMIT_DATA` per plugin (not `RLIMIT_AS` — which kills Go/Python/Node on startup; detailed in [docs/PROTOCOL.md](docs/PROTOCOL.md)). |
+| **True Modularity** | The core has no hardcoded knowledge of specific plugins. A plugin is an ordinary executable communicating over JSON-RPC, equipped with a manifest, capabilities/permissions, resource limits, and lifecycle events. |
+| **Multi-Language Plugins** | Zero-dependency Go SDK, Python, Node.js, Lua — examples are included in the repository. The protocol is newline-delimited JSON, compatible with virtually any language. |
+| **Termux Optimization** | Installs in seconds from a prebuilt binary into `$PREFIX/bin`, background service `aurora start` with `termux-wake-lock`, interactive `aurora setup`, and automatic web dashboard launcher. |
+| **Simple Installation** | Single curl command or `make install`. Zero external databases, dependencies, or system daemons required. |
+| **Local Web Dashboard** | Embedded SPA: real-time status, plugin store and manager, multi-account authentication, terminal chat, log viewer, settings. Token-based authentication, listening exclusively on loopback. |
 
 ---
 
-## Встановлення на Termux
+## Installation on Termux
 
 ```console
 $ pkg install curl
 $ curl -fsSL https://raw.githubusercontent.com/Sqwid-member/Aurora-UserBot/main/scripts/install.sh | bash
 ```
 
-Скрипт:
+The installer script:
+1. Detects your hardware platform (`android/arm64`, `linux/armv7`, `linux/amd64`, `darwin/*`).
+2. Checks GitHub Releases for the latest release and **downloads the prebuilt binary** — no need to install Go or compile on your phone.
+3. Places the binary in `$PREFIX/bin/aurora` and sets up `a` command aliases.
+4. Generates a secure token, sets up default plugins (`echo`, `pulse`, `autoaway`, `hello`), and starts the service.
 
-1. визначає платформу (`android/arm64`, `linux/armv7`, `linux/amd64`, `darwin/*`);
-2. питає в GitHub API про останній реліз і **вантажить готовий бінарник** —
-   на телефоні Go ставити й компілювати не треба;
-3. якщо збірок для твоєї платформи немає — збирає з вихідного коду
-   (`CGO_ENABLED=0`, статичний бінарник);
-4. кладе `~/bin/aurora`, створює `~/.local/share/aurora/`, копіює приклади
-   плагінів і перевіряє, що бінарник взагалі запускається.
-
-Корисні змінні:
+### Linux / macOS
 
 ```console
-$ AURORA_VERSION=v0.1.0  ... | bash   # конкретна версія
-$ AURORA_FORCE_SRC=1      ... | bash   # завжди зібрати з коду
-$ AURORA_REPO=you/fork    ... | bash   # свій форк
+$ curl -fsSL https://raw.githubusercontent.com/Sqwid-member/Aurora-UserBot/main/scripts/install.sh | bash
 ```
 
-Коли `~/bin` не в `PATH`, скрипт скаже який рядок додати в `~/.bashrc`.
+Installs to `~/bin/aurora`. Add `~/bin` to your `PATH` if it is not already present.
 
-### Звичайний Linux / macOS
+### Prebuilt Binaries
 
-```console
-$ git clone https://github.com/Sqwid-member/Aurora-UserBot && cd Aurora-UserBot
-$ make install        # або: go build -o ~/bin/aurora ./cmd/aurora
-```
+You can also download standalone binaries directly from [GitHub Releases](https://github.com/Sqwid-member/Aurora-UserBot/releases/latest):
 
-### Готові бінарники
-
-Кожен тег `v*` збирає реліз з бінарниками для всіх платформ:
-[Releases](https://github.com/Sqwid-member/Aurora-UserBot/releases).
+* `aurora-arm64` — Termux / Android aarch64 & Linux ARM64
+* `aurora-amd64` — Linux x86_64
+* `aurora-linux-arm.tar.gz` — Termux 32-bit ARM (armv7)
+* `aurora-darwin-arm64` — Apple Silicon (M1/M2/M3/M4)
+* `aurora-darwin-amd64` — Intel macOS
 
 ---
 
-## Перший запуск та Авторизація
+## First Run and Authentication
 
-Aurora за замовчуванням постачається зі **стандартними публічними ключами Telegram (Web K)**. Вхід відбувається максимально просто: **номер -> код -> пароль**.
-
-### Варіанти авторизації:
-
-1. **QR на цьому ж телефоні (найпростіше, без SMS):**
-   ```console
-   $ aurora login qr
-   ```
-   Тапніть посилання `tg://login?token=…` в **офіційному Telegram** і
-   підтвердіть вхід. Модифіковані клієнти замість підтвердження показують
-   сканер — для цього кроку потрібен офіційний застосунок.
-
-2. **У терміналі (номер → код → 2FA):**
-   ```console
-   $ aurora login
-   ```
-   Введіть номер телефону, код із Telegram та 2FA пароль (якщо встановлено).
-   Якщо код не приходить — спробуйте SMS (`s`), повтор (`r`) або вхід по QR.
-
-3. **Через веб-панель у браузері:**
-   ```console
-   $ aurora login web
-   ```
-   Вкладки: QR, код з Telegram, імпорт сесії (StringSession або ключі
-   з офіційного `web.telegram.org` через букмарклет — рятує, коли SMS
-   не приходить взагалі).
-
-4. **Власні ключі з my.telegram.org (опціонально):**
-   Якщо у вас виникають блокування або потрібні індивідуальні ключі розробника:
-   ```console
-   $ aurora setup
-   ```
-
-Ядро надрукує адресу панелі з токеном і відкриє її (`termux-open-url`).
-Там можна і увійти, і керувати плагінами.
-
-> **Лайфхак для повторного входу.** Якщо вже користуєтеся Telethon або
-> Pyrogram — не вводьте SMS знову. Експортуйте `StringSession` звідти і
-> імпортуйте сюди: `aurora session import "1BVts…"`. Сумісний формат
-> використовується в обидва боки, `aurora session export` поверне такий рядок.
-
-При встановленні Aurora зберігає зліпок пристрою (`aurora device --save`:
-модель/система з `getprop` на Android, DMI/`os-release` на Linux), щоб
-Telegram бачив вхід зі справжнього телефона, а не із заглушки.
-
-### Автозапуск після перезавантаження
+Launch the terminal control center:
 
 ```console
-$ pkg install termux-boot
-$ mkdir -p ~/.termux/boot
-$ ln -sf ~/aurora/scripts/aurora-boot.sh ~/.termux/boot/aurora
+$ aurora
+# or using the shortcut:
+$ a
 ```
 
-`termux-boot` запускає скрипт лише після реального перезавантаження
-пристрою, а не після закриття застосунку.
+### Authentication Methods:
+
+1. **One-tap QR on the same phone** (Recommended for Termux):
+   * Select `Вхід по QR` (QR Login).
+   * Tap `Відкрити в Telegram` (Open in Telegram) on the same phone.
+   * Official Telegram will prompt you to confirm the login. No phone number or SMS required.
+2. **Phone Number + Login Code**:
+   * Select `Вхід у Telegram` (Phone Login).
+   * Enter your international phone number (`+380...`).
+   * Enter the code received in your Telegram application or via SMS, followed by your 2FA password (if enabled).
+3. **Session String Import**:
+   * Import existing Telethon / Pyrogram / WDesktop session strings directly in the Web Dashboard.
+
+### Background Service Management
+
+```console
+$ a start    # Start background daemon
+$ a stop     # Stop background daemon
+$ a restart  # Restart daemon
+$ a status   # Check daemon & Telegram status
+$ a logs -f  # Follow live logs
+$ a update   # Seamlessly update to the latest release
+```
 
 ---
 
-## Панель керування
+## Web Dashboard
 
-`http://127.0.0.1:8420` — один вбудований HTML без зовнішніх ресурсів, тому
-працює офлайн.
-
-| Вкладка | Що робить |
-|---------|-----------|
-| **Статус** | сесія, час роботи, реальна ОП (`VmRSS`), ліміт пам'яті, goroutine, лічильники плагінів, стрічка подій |
-| **Плагіни** | встановлення з git, старт/стоп/рестарт/видалення, pid, доставлені й **втрачені** події, помилки, підписки |
-| **Вхід** | QR тапом або картинкою, код/SMS → 2FA, імпорт StringSession або ключів Telegram Web, вихід |
-| **Профіль** | ім'я/біо/юзернейм/аватар через MTProto, список активних сесій із завершенням |
-| **Чат** | надіслати повідомлення будь-кому за `@username`, номером, id або посиланням |
-| **Логи** | живий SSE-потік, рівні, підписки, фільтр, автоскрол |
-| **Налаштування** | ключі, проксі, ліміт пам'яті, рівень логів, read-only, пісочниця |
-
-Токен обов'язковий і передається як `?token=` (одразу стає cookie) або
-`Authorization: Bearer`. За замовчуванням панель слухає **лише loopback** —
-щоб не виставити свій юзербот у локальну мережу.
+The local web control center is accessible at:
+```
+http://127.0.0.1:8420/?token=<your-token>
+```
+To open it automatically in your default browser:
+```console
+$ a web
+```
 
 ---
 
-## Плагіни
+## Plugins
 
-### Структура
+### Structure
 
-```
-~/.local/share/aurora/plugins/
-└── myplug/
-    ├── aurora.plugin.json   # маніфест: дозволи, ліміти, події, команди
-    ├── main.py              # або main.go + зібраний бінарник
-    └── ...
-```
-
-### Встановлення
-
-```console
-$ aurora plugin install https://github.com/me/aurora-plugin-myplug
-```
-
-Або просто скопіюйте каталог у `plugins/` і перезапустіть ядро.
-
-### Швидкий приклад (Python, ~40 рядків)
+Each plugin lives in its own subdirectory inside `~/.local/share/aurora/plugins/<name>/` and contains an `aurora.plugin.json` manifest:
 
 ```json
 {
-  "name": "ping",
-  "runtime": {"command": "python3", "args": ["main.py"]},
+  "name": "echo",
+  "version": "1.0.0",
+  "description": "Echo bot replying to /echo",
+  "language": "python",
+  "runtime": {
+    "command": "python3",
+    "args": ["echo.py"]
+  },
   "events": ["message.new"],
-  "commands": [{"name": "ping"}],
-  "permissions": {"tg": ["send"]},
-  "limits": {"memory_mb": 64}
+  "permissions": {
+    "tg": ["send"]
+  },
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
 }
 ```
 
-```python
-import json, sys
+### Installation
 
-for line in sys.stdin:
-    if not line.strip(): continue
-    m = json.loads(line)
-    method = m.get("method")
-
-    if method in ("plugin.hello", "plugin.load"):
-        print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": {"ok": True}}), flush=True)
-
-    elif method == "event":
-        ev = m.get("params", {})
-        if ev["name"] == "message.new" and ev["data"]["text"] == "/ping":
-            print(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tg.send",
-                              "params": {"peer": "me", "text": "pong"}}), flush=True)
-
-    elif method == "command":
-        print(json.dumps({"jsonrpc": "2.0", "id": m["id"],
-                          "result": {"text": "pong"}}), flush=True)
-```
-
-Детальніше — **[docs/PLUGIN_API.md](docs/PLUGIN_API.md)** та
-**[docs/PROTOCOL.md](docs/PROTOCOL.md)**.
-
-Готові приклади:
-
-| Плагін | Мова | Що робить |
-|--------|------|-----------|
-| [`plugins/hello`](plugins/hello) | Go + офіційний SDK | шаблон із життєвим циклом, командою й лічильником |
-| [`plugins/echo`](plugins/echo) | Python | відповідає на `/echo` у приватних чатах |
-| [`plugins/pulse`](plugins/pulse) | Lua | моніторинг + тост у панель, з власним JSON-кодеком |
-| [`plugins/autoaway`](plugins/autoaway) | Node.js | автостатус після тиші |
-
-### Дозволи й ізоляція
-
-Маніфест оголошує можливості, а ядро їх перевіряє **на кожен виклик** —
-бо плагін це недовірений процес, і тільки поведінка ядра є справжньою
-межею:
-
-```jsonc
-"permissions": {
-  "tg": ["send", "read"],   // або ["*"]
-  "net": false,             // без цього http.request → -32001
-  "config": false,          // доступ до конфігурації
-  "env": []                 // дозволені змінні оточення
-},
-"limits": {
-  "memory_mb": 128,         // RLIMIT_DATA
-  "cpu_seconds": 0,
-  "file_mb": 16,            // RLIMIT_FSIZE
-  "idle_timeout_sec": 900
-}
-```
-
-Плюс до того ядро обрізає оточення (`HOME` плагіна — його власний каталог),
-ставить окрему process group, `PDEATHSIG=SIGKILL`, `RLIMIT_CORE=0`.
-Справжню файлову ізоляцію на Android дає лише `proot` — і маніфест це
-підтримує через `runtime.wrap`.
-
----
-
-## Команди CLI
-
+Install plugins directly from Git repositories:
 ```console
-$ aurora run                          # ядро: Telegram + плагіни + панель
-$ aurora login                        # інтерактивний вхід
-$ aurora login qr                     # вхід тапом на цьому ж телефоні
-$ aurora device --save                # зліпок пристрою (автоматично при встановленні)
-$ aurora panel                        # надрукувати посилання з токеном
-$ aurora send @durov "привіт"         # надіслати
-$ aurora plugins                      # список
-$ aurora plugin start|stop|restart <ім'я>
-$ aurora plugin install <git-url>
-$ aurora plugin remove <ім'я>
-$ aurora session                      # інформація про сесію
-$ aurora session export               # StringSession для Telethon/Pyrogram
-$ aurora session import "1BVts…"      # імпорт без SMS
-$ aurora backup [файл]                # зв'язка конфіг+сесії для переїзду
-$ aurora restore <файл>               # відновити (ядро зупинене)
-$ aurora config                       # конфіг + перевірка
-$ aurora doctor                       # перевірка оточення
+$ aurora plugin install https://github.com/user/aurora-plugin-name
 ```
+Or manage them visually via the Web Dashboard.
 
 ---
 
-## Як влаштовано ядро
+## Documentation
 
-```
-cmd/aurora           CLI
-internal/
-  tgc/               MTProto: з'єднання, вхід, peer-резолв, конвертація апдейтів
-  plugins/           маніфести, process-менеджер, ліміти, host-API, пермішенни
-  ipc/               newline-delimited JSON-RPC 2.0
-  web/               HTTP-панель + SSE + вбудований SPA
-  kv/                мікро-сховище (JSON у пам'яті + debounced flush)
-  config/            конфіг із суворою валідацією
-  logx/              кільцевий логгер, ніколи не блокує
-  paths/             розкладка каталогів, Termux-aware
-  proto/             спільні типи для плагінів і панелі
-sdk/go/              офіційний Go SDK (stdlib-only, окремий модуль)
-plugins/             приклади на Go / Python / Lua / Node
-```
-
-Кілька рішень, які варто знати:
-
-* **Апдейти не роблять IO.** Під час обробки `tg.Updates` ми лише
-  оновлюємо кеш імен і конвертуємо в `proto.Message`. Жодного
-  `ResolvePeer` у гарячому шляху — інакше бот задихався б від власних
-  повідомлень.
-* **Черга подій не блокує.** Кожен плагін має обмежену чергу (512) і
-  ліміт 200 подій/сек. Переповнення не зупиняє прийом апдейтів, а
-  рахується в `events_dropped` — видно в панелі.
-* **Авторестарт із backoff.** Плагін, що впав, піднімається до 5 разів
-  з експоненційною паузою, потім паркується. Ядро не перезапускає сам
-  себе — Telegram сам прийде в норму.
-* **Секретність.** `app_hash` і токен панелі ніколи не віддаються в API
-  (маскуються), сесія лежить у `~/.local/share/aurora/data/session.json`
-  з правами `0600`, а `RLIMIT_CORE=0` не дає плагіну завалити сховище
-  дампом пам'яті.
+* [Plugin API Guide](docs/PLUGIN_API.md) — How to write plugins in Python, Go, Node.js, and Lua.
+* [Protocol Specification](docs/PROTOCOL.md) — Complete JSON-RPC 2.0 protocol specifications and limits.
 
 ---
 
-## Розробка
+## License
 
-```console
-$ make build        # бінарник
-$ make test         # тести, включно з інтеграційним тестом плагіна
-$ make lint         # gofmt + go vet
-$ make cross        # крос-збірка android/arm64, android/arm, linux/*
-$ make release      # крос-збірка + архіви
-$ make help         # список цілей
-```
-
-Тести перевіряють не тільки юніти: `internal/plugins/host_test.go`
-**компілює справжній плагін-виконуваний файл і піднімає його**, потім
-перевіряє handshake, маршрутизацію команд, доставку подій, round-trip
-host-API та відмову за відсутності дозволу. Тобто протокол тестується
-наскрізь, а не в папері.
-
-## Ліцензія
-
-MIT. Див. [LICENSE](LICENSE).
-
-## Застереження
-
-Юзербот — це неофіційний клієнт Telegram. Автоматизація, спам і масові
-розсилки порушують умови користування. Тримайте свої плагіни в межах
-особистого використання, не масового, і не зловживайте чужими акаунтами.
+This project is licensed under the [MIT License](LICENSE).

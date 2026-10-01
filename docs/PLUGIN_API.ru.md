@@ -1,11 +1,11 @@
-> **Language / Мова / Язык:** **English** • [Українська](PLUGIN_API.uk.md) • [Русский](PLUGIN_API.ru.md)
+> **Language / Мова / Язык:** [English](PLUGIN_API.md) • [Українська](PLUGIN_API.uk.md) • **Русский**
 
-# Aurora Plugin API — Practical Guide
+# API плагинов Aurora — Практическое руководство
 
-Detailed protocol specifications can be found in [`PROTOCOL.md`](PROTOCOL.md).
-This guide helps you quickly start writing your own plugins.
+Подробное описание протокола находится в [`PROTOCOL.ru.md`](PROTOCOL.ru.md).
+Здесь описано, как быстро начать разработку плагина.
 
-## Minimal Working Plugin (Python)
+## Минимальный плагин (Python)
 
 ```python
 #!/usr/bin/env python3
@@ -21,7 +21,7 @@ for line in sys.stdin:
         print(json.dumps({"jsonrpc":"2.0","id":m["id"],"result":{"ok":True}}), flush=True)
 ```
 
-Place the manifest next to your script:
+Манифест рядом `aurora.plugin.json`:
 
 ```json
 {
@@ -32,11 +32,11 @@ Place the manifest next to your script:
 }
 ```
 
-That's all! The Aurora core handles process management, IPC, and event delivery.
+Ядро Aurora возьмет на себя запуск процесса, IPC и доставку событий.
 
 ## Go SDK
 
-Aurora provides an official zero-dependency Go SDK located in `sdk/go/aurora`:
+В Aurora входит официальный легковесный Go SDK в директории `sdk/go/aurora`:
 
 ```go
 package main
@@ -69,30 +69,7 @@ func main() {
 }
 ```
 
-Manifest `aurora.plugin.json`:
-```json
-{
-  "name": "my-go-plugin",
-  "version": "1.0.0",
-  "runtime": {
-    "command": "./my-go-plugin"
-  },
-  "events": ["message.new"],
-  "commands": [
-    {
-      "name": "ping",
-      "usage": "ping",
-      "description": "Checks responsiveness",
-      "in_chat": true
-    }
-  ],
-  "permissions": {
-    "tg": ["send", "read"]
-  }
-}
-```
-
-## Node.js / JavaScript
+## Node.js
 
 ```javascript
 #!/usr/bin/env node
@@ -108,28 +85,13 @@ rl.on('line', (line) => {
     process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true } }) + '\n');
   } else if (msg.method === 'plugin.load') {
     process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true } }) + '\n');
-  } else if (msg.method === 'event') {
-    const ev = msg.params;
-    if (ev.type === 'message.new' && ev.message?.text?.startsWith('.hi')) {
-      sendReply(ev.message.peer_id, 'Hello from Node.js!');
-    }
   }
 });
-
-function sendReply(peer, text) {
-  const req = {
-    jsonrpc: '2.0',
-    id: Date.now(),
-    method: 'tg.send',
-    params: { peer: String(peer), text }
-  };
-  process.stdout.write(JSON.stringify(req) + '\n');
-}
 ```
 
-## Plugin Settings Support
+## Настройки плагинов
 
-Plugins can declare visual settings rendered in the Aurora Web Dashboard:
+Плагины могут описывать схему настроек, отображаемую в веб-панели Aurora:
 
 ```json
 {
@@ -137,17 +99,17 @@ Plugins can declare visual settings rendered in the Aurora Web Dashboard:
     {
       "key": "enabled",
       "type": "bool",
-      "title": "Enabled",
+      "title": "Включено",
       "default": true
     },
     {
       "key": "prefix",
       "type": "text",
-      "title": "Command Prefix",
+      "title": "Префикс команд",
       "default": "."
     }
   ]
 }
 ```
 
-When settings are changed, the running plugin receives a `settings.changed` event containing the updated key-value map.
+При сохранении настроек в веб-панели плагин получает уведомление `settings.changed`.

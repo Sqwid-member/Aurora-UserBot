@@ -193,6 +193,36 @@
     unauthorized: 'Не авторизовано', authorized: 'Авторизовано', error: 'Помилка',
   };
 
+  
+  let LAST_STATUS = null;
+  function updateRamDisplay() {
+    if (!LAST_STATUS) return;
+    const sysMB = parseFloat((LAST_STATUS.memory_mb || 0).toFixed(1));
+    const pluginsMB = parseFloat(((ALL_PLUGINS || []).reduce((acc, p) => acc + ((p.memory_kb || 0) / 1024), 0)).toFixed(1));
+    const totalMB = parseFloat((sysMB + pluginsMB).toFixed(1));
+    const baseMB = LAST_STATUS.mem_limit_mb || 96;
+
+    const valEl = $("#ram-quick-val");
+    if (valEl) valEl.textContent = totalMB;
+
+    const pill = $("#ram-pill");
+    if (pill) {
+      pill.title = `Використання RAM: ${totalMB} MB загалом (система: ${sysMB} MB, плагіни: ${pluginsMB} MB)`;
+    }
+
+    const detailEl = $("#ram-quick-detail");
+    if (detailEl) {
+      detailEl.textContent = `(ядро ${sysMB} + плаг. ${pluginsMB})`;
+    }
+
+    const ramPct = Math.min(100, Math.round((totalMB / baseMB) * 100));
+    const quickBar = $("#ram-quick-bar");
+    if (quickBar) {
+      quickBar.style.width = `${ramPct}%`;
+      quickBar.className = `ram-pill-bar-fill ${totalMB > baseMB ? "burst" : totalMB > baseMB * 0.85 ? "warning" : ""}`;
+    }
+  }
+
   function renderStatus(st) {
     // 1. Top status pill
     const state = st.session || 'offline';
@@ -204,10 +234,10 @@
       dot.className = `status-dot ${state === 'authorized' ? 'active' : state === 'connecting' ? 'warning' : state === 'unauthorized' ? 'warning' : 'error'}`;
     }
     if (text) text.textContent = stateLabels[state] || state;
-    if (pill) pill.onclick = () => { if (state !== 'authorized') openModal('#modal-auth'); };
+    if (pill) pill.onclick = () => { if (state !== 'authorized') openAddAccountModal(); };
     if ((state === 'unauthorized' || location.hash === '#auth') && !window._authModalShown) {
       window._authModalShown = true;
-      openModal('#modal-auth');
+      openAddAccountModal();
     }
 
     // 2. User profile pill & Multi-account update
@@ -225,18 +255,9 @@
       }
     }
 
-    // 3. RAM Pills & Gauges
-    const curMB = parseFloat((st.memory_mb || 0).toFixed(1));
-    const baseMB = st.mem_limit_mb || 96;
-    const burstMB = Math.round(baseMB * 1.33);
-
-    $('#ram-quick-val').textContent = curMB;
-    const ramPct = Math.min(100, Math.round((curMB / baseMB) * 100));
-    const quickBar = $('#ram-quick-bar');
-    if (quickBar) {
-      quickBar.style.width = `${ramPct}%`;
-      quickBar.className = `ram-pill-bar-fill ${curMB > baseMB ? 'burst' : curMB > baseMB * 0.85 ? 'warning' : ''}`;
-    }
+    // 3. RAM Pills & Gauges (System + Plugins Total)
+    LAST_STATUS = st;
+    updateRamDisplay();
 
     // Overview cards
     $('#card-tg-state').textContent = stateLabels[state] || state;
@@ -421,6 +442,7 @@
       const data = await api('/api/plugins');
       ALL_PLUGINS = data.plugins || [];
       renderPlugins();
+      updateRamDisplay();
     } catch (e) {
       console.warn('Cannot load plugins:', e);
     }
@@ -511,8 +533,8 @@
                 : `<button class="btn btn-sm btn-primary" data-act="start" data-name="${esc(p.name)}">Запустити</button>`
               }
               <button class="btn btn-sm" data-act="restart" data-name="${esc(p.name)}">Перезапуск</button>
-              ${p.has_settings ? `<button class="btn btn-sm" data-settings="${esc(p.name)}">Налаштування</button>` : ''}
-              <button class="btn btn-sm" data-info="${esc(p.name)}">Інфо</button>
+              ${p.has_settings ? `<button class="btn btn-sm btn-icon" data-settings="${esc(p.name)}" title="Налаштування плагіна" aria-label="Налаштування"><svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>` : ''}
+              <button class="btn btn-sm btn-icon" data-info="${esc(p.name)}" title="Інформація про плагін" aria-label="Інфо"><svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></button>
               <button class="btn btn-sm btn-danger" data-act="uninstall" data-name="${esc(p.name)}">Видалити</button>
             </div>
           </div>
@@ -571,16 +593,37 @@
   let PS_NAME = '';
 
   async function openPluginSettings(name) {
+    const p = (ALL_PLUGINS || []).find((x) => x.name === name);
+    if (!p || !p.has_settings) {
+      toast("Налаштування", `У плагіна «${name}» немає параметрів налаштування`, "info");
+      return;
+    }
     PS_NAME = name;
-    $('#ps-title').textContent = `Налаштування: ${name}`;
-    const box = $('#ps-fields');
-    if (box) box.innerHTML = '<p class="auth-lead">Завантаження…</p>';
-    openModal('#modal-plugin-settings');
+    $("#ps-title").textContent = `Налаштування: ${name}`;
+    const box = $("#ps-fields");
+    if (box) box.innerHTML = "<p class=\"auth-lead\">Завантаження…</p>";
+    const btnSave = $("#btn-ps-save");
+    const btnReset = $("#btn-ps-reset");
+    if (btnSave) btnSave.style.display = "inline-flex";
+    if (btnReset) btnReset.style.display = "inline-flex";
+    openModal("#modal-plugin-settings");
     try {
-      const data = await api(`/api/plugins/${encodeURIComponent(name)}/settings`);
-      renderSettingsForm(data.fields || []);
+      const data = await Promise.race([
+        api(`/api/plugins/${encodeURIComponent(name)}/settings`),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Час очікування вичерпано")), 5000))
+      ]);
+      const fields = (data && data.fields) || [];
+      if (!fields.length) {
+        if (box) box.innerHTML = "<p class=\"auth-lead\">У цього плагіна немає доступних параметрів налаштування.</p>";
+        if (btnSave) btnSave.style.display = "none";
+        if (btnReset) btnReset.style.display = "none";
+      } else {
+        renderSettingsForm(fields);
+      }
     } catch (err) {
-      if (box) box.innerHTML = `<div class="auth-status err">${esc(err.message || 'Не вдалося завантажити')}</div>`;
+      if (box) box.innerHTML = `<div class="auth-status err">${esc(err.message || "Не вдалося завантажити")}</div>`;
+      if (btnSave) btnSave.style.display = "none";
+      if (btnReset) btnReset.style.display = "none";
     }
   }
 
@@ -1240,278 +1283,6 @@
     return p;
   }
 
-  function authTab(name) {
-    $$('#auth-tabs [data-auth-tab]').forEach((b) => b.classList.toggle('active', b.dataset.authTab === name));
-    ['qr', 'code', 'session'].forEach((t) => {
-      const el = $('#auth-tab-' + t);
-      if (el) el.hidden = t !== name;
-    });
-  }
-  $$('#auth-tabs [data-auth-tab]').forEach((b) => {
-    b.onclick = () => authTab(b.dataset.authTab);
-  });
-
-  function authNote(msg, isErr) {
-    const el = $('#auth-status');
-    if (!el) return;
-    if (!msg) { el.hidden = true; el.textContent = ''; return; }
-    el.hidden = false;
-    el.textContent = msg;
-    el.classList.toggle('err', !!isErr);
-  }
-
-  function showCodeStep(which) {
-    const map = { phone: '#auth-step-phone', code: '#auth-step-code', signup: '#auth-step-signup', pwd: '#auth-step-pwd' };
-    Object.entries(map).forEach(([k, sel]) => {
-      const el = $(sel);
-      if (el) el.style.display = k === which ? 'block' : 'none';
-    });
-    authTab('code');
-  }
-
-  async function requestCode(viaSMS) {
-    const input = $('#auth-phone-input');
-    const phone = normalizePhone((input.value || '').trim());
-    if (!phone) {
-      toast('Помилка', 'Введіть номер телефону', 'error');
-      return;
-    }
-    input.value = phone;
-    const path = viaSMS ? '/api/auth/code-request/sms' : '/api/auth/code-request';
-    try {
-      authNote(viaSMS ? 'Надсилаємо код по SMS…' : 'Надсилаємо код…', false);
-      await api(path, { method: 'POST', body: JSON.stringify({ phone }) });
-      toast('Вхід', viaSMS ? 'Код надіслано по SMS!' : 'Код підтвердження надіслано!', 'ok');
-      showCodeStep('code');
-      authNote('', false);
-      setTimeout(() => $('#auth-code-input')?.focus(), 100);
-    } catch (err) {
-      authNote(err.message || 'Не вдалося надіслати код', true);
-      toast('Помилка', err.message || 'Не вдалося надіслати код', 'error');
-    }
-  }
-
-  $('#form-auth-phone')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('#form-auth-phone button[type="submit"]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Надсилаємо код...'; }
-    try { await requestCode(false); }
-    finally { if (btn) { btn.disabled = false; btn.textContent = 'Отримати код'; } }
-  });
-
-  $('#btn-auth-sms')?.addEventListener('click', async () => {
-    const btn = $('#btn-auth-sms');
-    if (btn) { btn.disabled = true; }
-    try { await requestCode(true); }
-    finally { if (btn) { btn.disabled = false; } }
-  });
-
-  $('#btn-auth-resend')?.addEventListener('click', async () => {
-    try {
-      authNote('Надсилаємо код ще раз (зазвичай SMS/дзвінок)…', false);
-      await api('/api/auth/resend', { method: 'POST' });
-      authNote('', false);
-      toast('Вхід', 'Код надіслано повторно', 'ok');
-    } catch (err) {
-      authNote(err.message || 'Не вдалося надіслати повторно', true);
-      toast('Помилка', err.message || 'Не вдалося надіслати повторно', 'error');
-    }
-  });
-
-  $('#form-auth-code')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const code = $('#auth-code-input').value.trim();
-    if (!code) return;
-    try {
-      await api('/api/auth/code', { method: 'POST', body: JSON.stringify({ code }) });
-      toast('Вхід', 'Авторизовано!', 'ok');
-      authNote('', false);
-      closeModal('#modal-auth');
-      refreshStatus();
-    } catch (err) {
-      const msg = err.message || '';
-      const up = msg.toUpperCase();
-      if (up.includes('SESSION_PASSWORD_NEEDED') || up.includes('PASSWORD_AUTH_NEEDED') || msg.includes('2FA')) {
-        showCodeStep('pwd');
-        authNote('Потрібен хмарний пароль 2FA.', false);
-      } else if (msg.includes('не зареєстровано') || up.includes('SIGN-UP') || up.includes('SIGNUP') || up.includes('NOT REGISTERED') || up.includes('UNOCCUPLICATED')) {
-        showCodeStep('signup');
-        authNote(msg, false);
-      } else {
-        authNote(msg, true);
-        toast('Помилка коду', msg, 'error');
-      }
-    }
-  });
-
-  $('#form-auth-signup')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const first = ($('#auth-signup-first').value || '').trim();
-    const last = ($('#auth-signup-last').value || '').trim();
-    if (!first) { toast('Помилка', "Введіть ім'я", 'error'); return; }
-    try {
-      await api('/api/auth/signup', { method: 'POST', body: JSON.stringify({ first_name: first, last_name: last }) });
-      toast('Вхід', 'Акаунт створено!', 'ok');
-      closeModal('#modal-auth');
-      refreshStatus();
-    } catch (err) {
-      authNote(err.message, true);
-      toast('Помилка реєстрації', err.message, 'error');
-    }
-  });
-
-  $('#form-auth-pwd')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const password = $('#auth-pwd-input').value;
-    try {
-      await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ password }) });
-      toast('Вхід', 'Успішний вхід з 2FA паролем!', 'ok');
-      closeModal('#modal-auth');
-      refreshStatus();
-    } catch (err) {
-      authNote(err.message, true);
-      toast('Помилка 2FA', err.message, 'error');
-    }
-  });
-
-  $('#form-import-session')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const session = $('#auth-session-input').value.trim();
-    if (!session) { toast('Помилка', 'Вставте рядок сесії', 'error'); return; }
-    if (session.length < 32) { toast('Помилка', 'Рядок сесії закороткий — перевірте копію', 'error'); return; }
-    try {
-      await api('/api/session/import', { method: 'POST', body: JSON.stringify({ session }) });
-      toast('Сесія', 'Сесію імпортовано. Перезапустіть ядро.', 'ok');
-      closeModal('#modal-auth');
-      refreshStatus();
-    } catch (err) {
-      toast('Помилка імпорту', err.message, 'error');
-    }
-  });
-
-  $('#btn-web-bookmarklet-copy')?.addEventListener('click', async () => {
-    const code = ($('#web-bookmarklet')?.textContent || '').trim();
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code);
-      toast('Букмарклет', 'Код скопійовано — вставте його в адресу закладки', 'ok');
-    } catch {
-      toast('Букмарклет', 'Не вдалося скопіювати — виділіть код вручну', 'error');
-    }
-  });
-
-  $('#form-import-web')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const data = $('#auth-web-input').value.trim();
-    const dc = parseInt($('#auth-web-dc')?.value || '0', 10) || 0;
-    if (!data) { toast('Помилка', 'Вставте JSON з букмарклета', 'error'); return; }
-    try {
-      const res = await api('/api/session/import-web', { method: 'POST', body: JSON.stringify({ dc, data }) });
-      toast('Сесія', `Сесію імпортовано (DC ${res.dc}). Перезапустіть ядро.`, 'ok');
-      closeModal('#modal-auth');
-      refreshStatus();
-    } catch (err) {
-      toast('Помилка імпорту з Web', err.message, 'error');
-    }
-  });
-
-  // ----- QR на цьому ж телефоні: старт + опитування токена -----
-  let qrTimer = null;
-  function qrStopPoll() {
-    if (qrTimer) { clearInterval(qrTimer); qrTimer = null; }
-  }
-  function qrImgURL(path) {
-    const tok = localStorage.getItem("aurora_token") || window.__AURORA_TOKEN__ || '';
-    return path + (tok ? '?token=' + encodeURIComponent(tok) : '?t=') + '&t=' + Date.now();
-  }
-  function qrSetLink(url, expires) {
-    const link = $('#qr-link'), exp = $('#qr-expires'), open = $('#btn-qr-open'), img = $('#qr-img');
-    if (!link || !open) return;
-    if (img && !img.dataset.errBound) {
-      img.dataset.errBound = '1';
-      img.onerror = () => { img.hidden = true; };
-    }
-    if (!url) {
-      link.hidden = true; link.textContent = '';
-      if (exp) { exp.hidden = true; exp.textContent = ''; }
-      if (img) { img.hidden = true; img.removeAttribute('src'); }
-      open.style.opacity = '.5'; open.style.pointerEvents = 'none'; open.removeAttribute('href');
-      return;
-    }
-    link.hidden = false; link.textContent = url;
-    if (exp && expires) {
-      exp.hidden = false;
-      try { exp.textContent = 'Діє до ' + new Date(expires).toLocaleTimeString(); }
-      catch { exp.textContent = ''; }
-    }
-    if (img) { img.hidden = false; img.src = qrImgURL('/api/auth/qr/image'); }
-    open.style.opacity = '1'; open.style.pointerEvents = 'auto';
-    open.setAttribute('href', url);
-  }
-  async function qrPollOnce() {
-    try {
-      const st = await api('/api/auth/qr');
-      const status = $('#qr-status');
-      if (st && st.url) {
-        qrSetLink(st.url, st.expires);
-        if (status) status.textContent = st.running ? 'Чекаю підтвердження в Telegram — відкрийте посилання нижче…' : 'Посилання готове.';
-      } else if (status) {
-        status.textContent = st && st.running ? 'Telegram готує посилання…' : 'Посилання ще не готове — оновіть статус.';
-      }
-      try {
-        const auth = await api('/api/auth');
-        if (auth && auth.signed_in) {
-          if (status) status.textContent = 'Підтверджено! Сесію збережено.';
-          qrStopPoll();
-          toast('Вхід', 'Авторизовано по QR!', 'ok');
-          closeModal('#modal-auth');
-          refreshStatus();
-        }
-      } catch {}
-    } catch (err) {
-      const status = $('#qr-status');
-      if (status) status.textContent = 'Помилка статусу: ' + (err.message || err);
-    }
-  }
-  function qrStartPoll() {
-    qrStopPoll();
-    qrTimer = setInterval(qrPollOnce, 2000);
-  }
-  $('#btn-qr-start')?.addEventListener('click', async () => {
-    const btn = $('#btn-qr-start'), status = $('#qr-status');
-    if (btn) { btn.disabled = true; btn.textContent = 'Запитуємо…'; }
-    try {
-      await api('/api/auth/qr', { method: 'POST' });
-      if (status) status.textContent = 'Запит надіслано, чекаю токен від Telegram…';
-      qrSetLink('', '');
-      await qrPollOnce();
-      qrStartPoll();
-    } catch (err) {
-      if (status) status.textContent = 'Помилка: ' + (err.message || err);
-      toast('QR-вхід', err.message || 'Не вдалося', 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Отримати посилання для входу'; }
-    }
-  });
-  $('#btn-qr-refresh')?.addEventListener('click', () => qrPollOnce());
-  $('#btn-qr-copy')?.addEventListener('click', async () => {
-    const url = ($('#qr-link')?.textContent || '').trim();
-    if (!url) { toast('QR', 'Посилання ще немає', 'error'); return; }
-    try {
-      await navigator.clipboard.writeText(url);
-      toast('QR', 'Посилання скопійовано', 'ok');
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = url; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); toast('QR', 'Посилання скопійовано', 'ok'); }
-      catch { toast('QR', 'Не вдалося скопіювати', 'error'); }
-      ta.remove();
-    }
-  });
-  $('#modal-auth')?.addEventListener('click', (e) => {
-    if (e.target && e.target.id === 'modal-auth') qrStopPoll();
-  });
-
   // ---------- Streams & Events ----------
   function openStream(path, onMessage) {
     let es;
@@ -1708,7 +1479,7 @@
   }
   const accPath = (id, suffix) => `/api/accounts/${encodeURIComponent(id)}${suffix}`;
 
-  $('#btn-open-add-account')?.addEventListener('click', () => {
+  function openAddAccountModal() {
     $('#account-pop')?.classList.remove('open');
     window._pendingAccId = '';
     accNote('', false);
@@ -1718,7 +1489,9 @@
     const st = $('#add-acc-qr-status');
     if (st) st.textContent = 'Посилання ще не запитано.';
     openModal('#modal-account-add');
-  });
+  }
+
+  $('#btn-open-add-account')?.addEventListener('click', openAddAccountModal);
 
   async function accRequestCode(viaSMS) {
     const input = $('#add-acc-phone');
@@ -1991,6 +1764,14 @@
       if (!document.hidden) refreshStatus();
     });
   }
+
+
+  // Prevent accidental value changes when scrolling past range sliders
+  document.addEventListener("wheel", (e) => {
+    if (e.target && e.target.type === "range") {
+      e.preventDefault();
+    }
+  }, { passive: false });
 
   boot();
 })();

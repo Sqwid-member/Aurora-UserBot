@@ -97,7 +97,7 @@ func (a *App) Run(view View) error {
 
 	go keyReader(a.term.in.Read, a.keys)
 
-	tick := time.NewTicker(400 * time.Millisecond)
+	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 
 	a.draw()

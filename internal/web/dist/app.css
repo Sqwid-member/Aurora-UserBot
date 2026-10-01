@@ -556,6 +556,7 @@ body {
   background: linear-gradient(to right, var(--accent) 0, var(--accent) var(--p, 0%), var(--surface-3) var(--p, 0%));
   outline: none;
   cursor: pointer;
+  touch-action: pan-y;
 }
 
 .md3-slider-input::-webkit-slider-thumb {
@@ -1519,20 +1520,32 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .theme-wrap { position: relative; display: inline-flex; }
 .theme-pop {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 8px);
   right: 0;
   width: 268px;
+  max-width: calc(100vw - 24px);
   padding: 6px;
   background: var(--v2-background-bg-layer-01);
-  border: none;
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: var(--v2-elevation-floating);
-  z-index: 60;
+  z-index: 100;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-6px) scale(0.98);
   transform-origin: top right;
   transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+}
+@media (max-width: 600px) {
+  .theme-pop {
+    position: fixed;
+    top: 60px;
+    right: 12px;
+    left: auto;
+    width: min(290px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    transform-origin: top right;
+  }
 }
 .theme-pop.open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 
@@ -1781,3 +1794,14 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   word-break: break-all;
   user-select: all;
 }
+
+.btn-icon {
+  padding: 6px;
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+.btn-icon .md-icon { margin: 0; }
