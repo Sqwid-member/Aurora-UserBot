@@ -27,8 +27,8 @@ func staticHandler(token string) http.Handler {
 	fileServer := http.FileServer(http.FS(sub))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The shell must never be cached, or a rebuilt panel looks broken.
-		w.Header().Set("Cache-Control", "no-store")
+		// Static assets and shell must never be cached across updates.
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if name == "" {

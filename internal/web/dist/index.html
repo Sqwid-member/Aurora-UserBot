@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080808">
   <title>Aurora UserBot — Панель керування</title>
-  <link rel="stylesheet" href="theme.css">
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="theme.css?v={{VERSION}}">
+  <link rel="stylesheet" href="app.css?v={{VERSION}}">
   <script>
     // Перше фарбування до завантаження скриптів: підставляє закешовані токени
     // обраної теми, якщо вона не є базовою (OC-2 лежить у theme.css).
@@ -1027,7 +1027,7 @@
 <!-- Floating Toasts -->
 <div class="toast-container" id="toast-container"></div>
 
-<script src="app.js"></script>
-<script type="module" src="theme/index.js"></script>
+<script src="app.js?v={{VERSION}}"></script>
+<script type="module" src="theme/index.js?v={{VERSION}}"></script>
 </body>
 </html>
