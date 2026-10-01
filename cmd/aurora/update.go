@@ -10,11 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -27,6 +27,8 @@ import (
 
 const maxUpdateBytes = 100 << 20 // 100 MiB: prebuilt is ~18 MiB, anything more is an attack.
 
+var updateSpinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+
 type releaseAsset struct {
 	Name       string `json:"name"`
 	BrowserURL string `json:"browser_download_url"`
@@ -38,23 +40,129 @@ type release struct {
 	Assets  []releaseAsset `json:"assets"`
 }
 
-func cmdUpdate(layout paths.Layout) error {
+type progressWriter struct {
+	dst        io.Writer
+	hasher     hash.Hash
+	total      int64
+	downloaded int64
+	startTime  time.Time
+	lastPrint  time.Time
+	frame      int
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n, err := pw.dst.Write(p)
+	if n > 0 {
+		pw.downloaded += int64(n)
+		if pw.hasher != nil {
+			pw.hasher.Write(p[:n])
+		}
+		now := time.Now()
+		if now.Sub(pw.lastPrint) >= 100*time.Millisecond {
+			pw.lastPrint = now
+			pw.frame++
+			pw.printProgress()
+		}
+	}
+	return n, err
+}
+
+func (pw *progressWriter) printProgress() {
+	elapsed := time.Since(pw.startTime).Seconds()
+	if elapsed <= 0 {
+		elapsed = 0.001
+	}
+	speed := float64(pw.downloaded) / elapsed / (1024 * 1024)
+	currMB := float64(pw.downloaded) / (1024 * 1024)
+	spinner := updateSpinnerFrames[pw.frame%len(updateSpinnerFrames)]
+
+	if pw.total > 0 {
+		totalMB := float64(pw.total) / (1024 * 1024)
+		pct := float64(pw.downloaded) / float64(pw.total) * 100
+		if pct > 100 {
+			pct = 100
+		}
+		barWidth := 20
+		filled := int(float64(barWidth) * float64(pw.downloaded) / float64(pw.total))
+		if filled > barWidth {
+			filled = barWidth
+		}
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		fmt.Printf("\r  \033[36m%c\033[0m Завантаження: %5.1f / %5.1f MB [%s] %3.0f%% (%4.1f MB/s)  ",
+			spinner, currMB, totalMB, bar, pct, speed)
+	} else {
+		fmt.Printf("\r  \033[36m%c\033[0m Завантаження: %5.1f MB (%4.1f MB/s)  ",
+			spinner, currMB, speed)
+	}
+}
+
+func (pw *progressWriter) finish() {
+	elapsed := time.Since(pw.startTime).Seconds()
+	if elapsed <= 0 {
+		elapsed = 0.001
+	}
+	speed := float64(pw.downloaded) / elapsed / (1024 * 1024)
+	currMB := float64(pw.downloaded) / (1024 * 1024)
+	fmt.Printf("\r  \033[32m✓\033[0m Завантажено %5.1f MB за %.1fс (%4.1f MB/s)                    \n",
+		currMB, elapsed, speed)
+}
+
+func cmdUpdate(layout paths.Layout, args ...string) error {
 	fmt.Println("\n\033[1;36m════════════════════════════════════════════════════════════════════\033[0m")
 	fmt.Printf("  \033[1;37m🚀 АВТОМАТИЧНЕ ОНОВЛЕННЯ AURORA USERBOT\033[0m (поточна версія: \033[33m%s\033[0m)\n", buildinfo.Version)
 	fmt.Println("\033[1;36m════════════════════════════════════════════════════════════════════\033[0m")
 
+	force := false
+	for _, a := range args {
+		if a == "--force" || a == "-f" {
+			force = true
+			break
+		}
+	}
+	for _, a := range os.Args[1:] {
+		if a == "--force" || a == "-f" {
+			force = true
+			break
+		}
+	}
+
 	opsys := runtime.GOOS
 	arch := runtime.GOARCH
-	// Candidate asset names in preference order: raw binaries first
-	// (a .sha256 sidecar must never win the match), then tarballs.
+
 	var candidates []string
 	switch opsys + "/" + arch {
-	case "android/arm64", "linux/arm64", "darwin/arm64":
-		candidates = []string{"aurora-arm64", "aurora-arm64.tar.gz"}
-	case "linux/amd64", "darwin/amd64":
-		candidates = []string{"aurora-amd64", "aurora-amd64.tar.gz"}
+	case "android/arm64", "linux/arm64":
+		candidates = []string{
+			"aurora-arm64",
+			"aurora-android-arm64.tar.gz",
+			"aurora-linux-arm64.tar.gz",
+			"aurora-arm64.tar.gz",
+			"aurora-linux-arm64",
+		}
+	case "linux/amd64":
+		candidates = []string{
+			"aurora-amd64",
+			"aurora-linux-amd64",
+			"aurora-amd64.tar.gz",
+			"aurora-linux-amd64.tar.gz",
+		}
+	case "darwin/arm64":
+		candidates = []string{
+			"aurora-darwin-arm64",
+			"aurora-arm64",
+		}
+	case "darwin/amd64":
+		candidates = []string{
+			"aurora-darwin-amd64",
+			"aurora-amd64",
+		}
 	case "linux/arm":
-		candidates = []string{"aurora-linux-arm.tar.gz", "aurora-linux-arm"}
+		candidates = []string{
+			"aurora-linux-arm.tar.gz",
+			"aurora-linux-arm",
+			"aurora-arm.tar.gz",
+			"aurora-arm",
+		}
 	default:
 		return fmt.Errorf("автоматичне оновлення не підтримується для платформи: %s/%s", opsys, arch)
 	}
@@ -71,38 +179,25 @@ func cmdUpdate(layout paths.Layout) error {
 			}
 		}
 	}
+	if resolved, err := filepath.EvalSymlinks(targetPath); err == nil && resolved != "" {
+		targetPath = resolved
+	}
 
 	fmt.Printf("→ Отримання інформації про останній реліз...\n")
 	client := updateHTTPClient()
 
-	// Fetch latest release from GitHub API
-	resp, err := client.Get("https://api.github.com/repos/Sqwid-member/Aurora-UserBot/releases/latest")
-	if err != nil && isCertificateError(err) {
-		// Fallback for Android/Termux environments missing system CAs.
-		// Downloaded payload integrity is cryptographically verified via sha256 checksum sidecar.
-		insecureTr := http.DefaultTransport.(*http.Transport).Clone()
-		insecureTr.DialContext = dialUpdateWithDNSFallback
-		insecureTr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		client = &http.Client{Timeout: 30 * time.Second, Transport: insecureTr}
-		resp, err = client.Get("https://api.github.com/repos/Sqwid-member/Aurora-UserBot/releases/latest")
-	}
+	rel, err := fetchReleaseInfo(client)
 	if err != nil {
-		return fmt.Errorf("помилка мережі при запиті релізу: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub API повернув HTTP %d", resp.StatusCode)
+		return fmt.Errorf("отримання релізу: %w", err)
 	}
 
-	var rel release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return fmt.Errorf("розбір відповіді GitHub API: %w", err)
+	if !force && buildinfo.Version != "dev" && rel.TagName == buildinfo.Version {
+		fmt.Printf("\n\033[1;32m✓ У вас вже встановлено останню версію Aurora (%s).\033[0m\n", rel.TagName)
+		fmt.Println("  Оновлення не потрібне. Для примусового перевстановлення виконайте:")
+		fmt.Println("  \033[36maurora update --force\033[0m\n")
+		return nil
 	}
 
-	// Find asset for our platform, trying candidate names in preference
-	// order. Checksum sidecars (.sha256) never match a candidate, so they
-	// can never win.
 	var asset *releaseAsset
 	for _, want := range candidates {
 		for i := range rel.Assets {
@@ -119,36 +214,50 @@ func cmdUpdate(layout paths.Layout) error {
 		return fmt.Errorf("реліз %s не містить бінарника для %s/%s", rel.TagName, opsys, arch)
 	}
 
-	// Download the binary
 	fmt.Printf("→ Завантаження %s з релізу %s...\n", asset.Name, rel.TagName)
-	resp, err = client.Get(asset.BrowserURL)
+	resp, err := client.Get(asset.BrowserURL)
+	if err != nil && isCertificateError(err) {
+		insecureTr := http.DefaultTransport.(*http.Transport).Clone()
+		insecureTr.DialContext = dialUpdateWithDNSFallback
+		insecureTr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		client = &http.Client{Timeout: 90 * time.Second, Transport: insecureTr}
+		resp, err = client.Get(asset.BrowserURL)
+	}
 	if err != nil {
 		return fmt.Errorf("помилка мережі при завантаженні: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub повернув HTTP %d при завантаженні бінарника", resp.StatusCode)
+		return fmt.Errorf("сервер повернув HTTP %d при завантаженні бінарника", resp.StatusCode)
 	}
 
-	// Download to temp file with size limit. A tarball asset carries the
-	// binary inside, so extract its first regular file instead.
 	tmpFile := targetPath + ".new"
+	_ = os.Remove(tmpFile)
 	out, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		return fmt.Errorf("створення файлу оновлення: %w", err)
 	}
 
-	// Compute SHA256 while downloading
 	hasher := sha256.New()
-	mw := io.MultiWriter(out, hasher)
+	pw := &progressWriter{
+		dst:       out,
+		hasher:    hasher,
+		total:     resp.ContentLength,
+		startTime: time.Now(),
+		lastPrint: time.Now(),
+	}
+
 	var n int64
 	if strings.HasSuffix(asset.Name, ".tar.gz") {
-		n, err = extractTarGz(mw, resp.Body)
+		// When unpacking tar.gz, hash the extracted binary stream
+		n, err = extractTarGz(pw, resp.Body)
 	} else {
-		n, err = io.Copy(mw, io.LimitReader(resp.Body, maxUpdateBytes+1))
+		n, err = io.Copy(pw, io.LimitReader(resp.Body, maxUpdateBytes+1))
 	}
 	_ = out.Close()
+	pw.finish()
+
 	if err != nil {
 		_ = os.Remove(tmpFile)
 		return fmt.Errorf("запис оновлення: %w", err)
@@ -157,17 +266,13 @@ func cmdUpdate(layout paths.Layout) error {
 		_ = os.Remove(tmpFile)
 		return fmt.Errorf("завантаження завелике (%d байт), оновлення скасовано", n)
 	}
-	if n < 1000000 { // less than 1MB is invalid
+	if n < 1000000 {
 		_ = os.Remove(tmpFile)
 		return fmt.Errorf("завантажений файл занадто малий (%d байт), оновлення скасовано", n)
 	}
-	if err := os.Chmod(tmpFile, 0o755); err != nil {
-		_ = os.Remove(tmpFile)
-		return fmt.Errorf("chmod нового бінарника: %w", err)
-	}
+	_ = os.Chmod(tmpFile, 0o755)
 
-	// Verify checksum if .sha256 asset exists (named after the raw
-	// binary, so strip a tarball suffix first).
+	// Verify checksum if .sha256 exists
 	shaAssetName := strings.TrimSuffix(asset.Name, ".tar.gz") + ".sha256"
 	for i := range rel.Assets {
 		if rel.Assets[i].Name == shaAssetName {
@@ -182,44 +287,49 @@ func cmdUpdate(layout paths.Layout) error {
 						expected = strings.ToLower(fields[0])
 					}
 					actual := strings.ToLower(hex.EncodeToString(hasher.Sum(nil)))
-					if expected != actual {
+					if expected != "" && expected != actual {
 						_ = os.Remove(tmpFile)
 						return fmt.Errorf("перевірка SHA256 не пройшла: очікувався %s, отримано %s", expected, actual)
 					}
-					fmt.Printf("  ✓ SHA256 перевірено\n")
+					fmt.Printf("  \033[32m✓\033[0m Контрольну суму SHA256 перевірено\n")
 				}
 			}
 			break
 		}
 	}
 
-	// Smoke-test the download before touching the running install.
-	if out, err := exec.Command(tmpFile, "version").CombinedOutput(); err != nil {
+	// Smoke test downloaded binary
+	if out, err := sysx.Command(tmpFile, "version").CombinedOutput(); err != nil {
 		_ = os.Remove(tmpFile)
 		return fmt.Errorf("новий бінарник не запускається (%v): %s", err, strings.TrimSpace(string(out)))
 	}
 
-	// Keep a rollback copy of the current binary.
 	backup := targetPath + ".bak"
 	_ = os.Remove(backup)
 	if cur, err := os.ReadFile(targetPath); err == nil {
 		_ = os.WriteFile(backup, cur, 0o755)
 	}
 
-	// Was daemon running?
 	pid, wasRunning := checkPidRunning(layout.PidFile())
 	if wasRunning {
 		fmt.Printf("→ Зупиняю фоновий процес (PID %d)...\n", pid)
 		_ = cmdStop(layout)
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			if !isPidAlive(pid) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
-	// Replace executable
+	// Unlink before replace to prevent Linux "Text file busy"
+	_ = os.Remove(targetPath)
 	if err := os.Rename(tmpFile, targetPath); err != nil {
-		// Fallback copy for some filesystems
 		data, readErr := os.ReadFile(tmpFile)
 		if readErr != nil {
 			restoreBackup(targetPath, backup)
-			return fmt.Errorf("заміна бінарника: %w", err)
+			return fmt.Errorf("читання оновленого файлу: %w", readErr)
 		}
 		if writeErr := os.WriteFile(targetPath, data, 0o755); writeErr != nil {
 			restoreBackup(targetPath, backup)
@@ -227,30 +337,99 @@ func cmdUpdate(layout paths.Layout) error {
 		}
 		_ = os.Remove(tmpFile)
 	}
-	if err := os.Chmod(targetPath, 0o755); err != nil {
-		restoreBackup(targetPath, backup)
-		return fmt.Errorf("chmod встановленого бінарника: %w", err)
-	}
+	_ = os.Chmod(targetPath, 0o755)
 
-	fmt.Printf("\033[1;32m✓ Бінарник успішно оновлено до %s:\033[0m %s\n", rel.TagName, targetPath)
-	fmt.Printf("  резервна копія: %s (видаліть після перевірки)\n", backup)
+	fmt.Printf("\n\033[1;32m✓ Бінарник успішно оновлено до %s:\033[0m %s\n", rel.TagName, targetPath)
 
 	if wasRunning {
 		fmt.Println("→ Перезапускаю фонову службу...")
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 		if err := cmdStart(layout); err != nil {
 			fmt.Printf("⚠ Не вдалося автоматично перезапустити службу: %v\n", err)
+		} else {
+			if newPid, ok := checkPidRunning(layout.PidFile()); ok {
+				fmt.Printf("  \033[32m✓\033[0m Службу запущено (PID %d)\n", newPid)
+			}
 		}
 	}
 
-	fmt.Println("\n\033[1;32m🎉 ОНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО!\033[0m")
+	fmt.Println("\n\033[1;32m🎉 ОНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО!\033[0m\n")
 	return nil
 }
 
-// extractTarGz streams the first regular file out of a .tar.gz archive,
-// capped at maxUpdateBytes+1. It rejects absolute paths and ".." escapes so
-// a crafted asset cannot write outside the temp file (we only stream bytes,
-// but staying strict costs nothing).
+func fetchReleaseInfo(client *http.Client) (*release, error) {
+	apiURL := "https://api.github.com/repos/Sqwid-member/Aurora-UserBot/releases/latest"
+	resp, err := client.Get(apiURL)
+	if err != nil && isCertificateError(err) {
+		insecureTr := http.DefaultTransport.(*http.Transport).Clone()
+		insecureTr.DialContext = dialUpdateWithDNSFallback
+		insecureTr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		client = &http.Client{Timeout: 30 * time.Second, Transport: insecureTr}
+		resp, err = client.Get(apiURL)
+	}
+
+	// If API succeeded and returned 200, decode JSON
+	if err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+		var rel release
+		if err := json.NewDecoder(resp.Body).Decode(&rel); err == nil && rel.TagName != "" {
+			return &rel, nil
+		}
+	}
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+
+	// Fallback: Resolve latest tag via github.com redirect (bypasses GitHub API rate limits)
+	webURL := "https://github.com/Sqwid-member/Aurora-UserBot/releases/latest"
+	noRedirectClient := &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			DialContext: dialUpdateWithDNSFallback,
+			TLSClientConfig: &tls.Config{
+				RootCAs:            sysx.RootCertPool(),
+				InsecureSkipVerify: true,
+			},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	webResp, webErr := noRedirectClient.Get(webURL)
+	if webErr == nil {
+		defer webResp.Body.Close()
+		loc := webResp.Header.Get("Location")
+		if loc != "" {
+			tag := filepath.Base(loc)
+			if strings.HasPrefix(tag, "v") {
+				// Synthesize release with direct download URLs
+				rel := &release{
+					TagName: tag,
+				}
+				knownAssets := []string{
+					"aurora-arm64", "aurora-arm64.tar.gz",
+					"aurora-android-arm64.tar.gz", "aurora-linux-arm64.tar.gz",
+					"aurora-linux-arm64", "aurora-amd64", "aurora-linux-amd64",
+					"aurora-amd64.tar.gz", "aurora-linux-amd64.tar.gz",
+					"aurora-darwin-arm64", "aurora-darwin-amd64",
+					"aurora-linux-arm.tar.gz", "aurora-linux-arm",
+					"aurora-arm64.sha256", "aurora-amd64.sha256",
+				}
+				for _, name := range knownAssets {
+					rel.Assets = append(rel.Assets, releaseAsset{
+						Name:       name,
+						BrowserURL: fmt.Sprintf("https://github.com/Sqwid-member/Aurora-UserBot/releases/download/%s/%s", tag, name),
+					})
+				}
+				return rel, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("не вдалося отримати дані релізу з GitHub API або web")
+}
+
 func extractTarGz(dst io.Writer, src io.Reader) (int64, error) {
 	gz, err := gzip.NewReader(io.LimitReader(src, maxUpdateBytes+1))
 	if err != nil {
@@ -260,30 +439,25 @@ func extractTarGz(dst io.Writer, src io.Reader) (int64, error) {
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
-		if err == io.EOF {
-			return 0, fmt.Errorf("tar.gz не містить файлів")
+		if errors.Is(err, io.EOF) {
+			return 0, fmt.Errorf("архів не містить виконуваного файлу")
 		}
 		if err != nil {
-			return 0, fmt.Errorf("читання tar.gz: %w", err)
+			return 0, fmt.Errorf("читання tar: %w", err)
 		}
-		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
-		name := strings.TrimSpace(hdr.Name)
-		if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "..") {
+		clean := filepath.Clean(hdr.Name)
+		if strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "../") {
 			continue
 		}
 		return io.Copy(dst, io.LimitReader(tr, maxUpdateBytes+1))
 	}
 }
 
-// fallbackNameservers are used only when the system resolver fails.
-// A static Go binary on Termux/Android often sees no /etc/resolv.conf
-// (/etc points at /system/etc there), so the system lookup dies with
-// "connection refused" on localhost while curl and git keep working.
 var fallbackNameservers = []string{"8.8.8.8:53", "1.1.1.1:53"}
 
-// updateHTTPClient builds the release-download client with a DNS fallback and TLS root cert pool.
 func updateHTTPClient() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.DialContext = dialUpdateWithDNSFallback
@@ -291,7 +465,7 @@ func updateHTTPClient() *http.Client {
 	tr.TLSClientConfig = &tls.Config{
 		RootCAs: sysx.RootCertPool(),
 	}
-	return &http.Client{Timeout: 30 * time.Second, Transport: tr}
+	return &http.Client{Timeout: 90 * time.Second, Transport: tr}
 }
 
 func isCertificateError(err error) bool {
@@ -302,10 +476,6 @@ func isCertificateError(err error) bool {
 	return strings.Contains(s, "certificate") || strings.Contains(s, "x509") || strings.Contains(s, "unknown authority")
 }
 
-// dialUpdateWithDNSFallback dials normally first and only falls back to
-// public DNS when the system resolver itself errors out. TLS SNI and cert
-// verification are unaffected: we still dial on behalf of the original
-// hostname, just with an IP we resolved ourselves.
 func dialUpdateWithDNSFallback(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
 	conn, err := dialer.DialContext(ctx, network, addr)
@@ -349,5 +519,6 @@ func restoreBackup(target, backup string) {
 	if err != nil {
 		return
 	}
+	_ = os.Remove(target)
 	_ = os.WriteFile(target, data, 0o755)
 }

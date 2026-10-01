@@ -146,7 +146,7 @@ func run(args []string) error {
 	case "doctor":
 		return cmdDoctor(layout)
 	case "update", "upgrade":
-		return cmdUpdate(layout)
+		return cmdUpdate(layout, args...)
 	case "version":
 		fmt.Println("aurora " + buildinfo.String())
 		return nil

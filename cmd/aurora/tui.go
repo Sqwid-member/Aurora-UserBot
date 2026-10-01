@@ -28,6 +28,16 @@ func cmdTUI(layout paths.Layout) error {
 	if err := app.Run(newMainView(c)); err != nil {
 		return err
 	}
+	if c.wantUpdate {
+		if err := cmdUpdate(layout, "--force"); err != nil {
+			fmt.Printf("
+[31m✖ Помилка оновлення:[0m %v
+", err)
+			return err
+		}
+		fmt.Println("→ Перезапуск оновленої програми...")
+		return reexecSelf()
+	}
 	fmt.Println("До зустрічі!")
 	return nil
 }
@@ -58,6 +68,7 @@ type ctl struct {
 	noticeErr   bool
 	noticeAt    time.Time
 	busy        string
+	wantUpdate  bool
 }
 
 // snap is an immutable copy of the controller state for one frame.
@@ -497,14 +508,8 @@ func (v *mainView) activate(id string) {
 	case "info":
 		c.app.SetView(newInfoView(c))
 	case "update":
-		c.run("оновлення", func() error {
-			if err := quiet(func() error { return cmdUpdate(c.layout) }); err != nil {
-				return err
-			}
-			// The binary on disk is new but this menu still runs the old
-			// code: replace ourselves so the whole CLI reloads.
-			return reexecSelf()
-		})
+		c.wantUpdate = true
+		c.app.Quit()
 	case "logout":
 		back := newMainView(c)
 		c.app.SetView(newConfirmView(c, "Вийти з акаунта Telegram?",
