@@ -162,9 +162,11 @@ fetch_prebuilt() {
   tag="$(resolve_version)"
   say "Реліз для встановлення: $tag"
   local candidates=(
-    "aurora-termux-ready.tar.gz"
-    "aurora-linux-${GOARCH}.tar.gz"
+    "aurora-${GOARCH}"
+    "aurora-${GOARCH}.tar.gz"
     "aurora-android-${GOARCH}.tar.gz"
+    "aurora-linux-${GOARCH}.tar.gz"
+    "aurora-termux-ready.tar.gz"
     "aurora-linux-${GOARCH}"
   )
 
@@ -180,7 +182,8 @@ fetch_prebuilt() {
           local found
           found="$(find "$tmp" -type f -name "aurora*" ! -name "*.bin" ! -name "*.tar.gz" | head -n 1)"
           if [ -n "$found" ] && [ -f "$found" ]; then
-                        rm -f "$BIN_DIR/aurora" 2>/dev/null || true
+            pkill -9 -f "$BIN_DIR/aurora" >/dev/null 2>&1 || true
+            rm -f "$BIN_DIR/aurora" 2>/dev/null || true
             mv "$found" "$BIN_DIR/aurora"
             chmod 755 "$BIN_DIR/aurora" 
             if [ -d "$tmp/plugins" ]; then
@@ -191,7 +194,8 @@ fetch_prebuilt() {
           fi
         fi
       else
-                rm -f "$BIN_DIR/aurora" 2>/dev/null || true
+        pkill -9 -f "$BIN_DIR/aurora" >/dev/null 2>&1 || true
+        rm -f "$BIN_DIR/aurora" 2>/dev/null || true
         mv "$tmp/archive.bin" "$BIN_DIR/aurora"
         chmod 755 "$BIN_DIR/aurora" 
         rm -rf "$tmp"
