@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/Sqwid-member/Aurora-UserBot/internal/ipc"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 )
 
 const (
@@ -409,6 +411,7 @@ func getSafeTransport() *http.Transport {
 			MaxIdleConnsPerHost:   8,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
+			TLSClientConfig:       &tls.Config{RootCAs: sysx.RootCertPool()},
 			ExpectContinueTimeout: 1 * time.Second,
 		}
 	})

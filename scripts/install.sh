@@ -11,7 +11,7 @@ REPO="${AURORA_REPO:-Sqwid-member/Aurora-UserBot}"
 # Explicit version wins; otherwise the latest GitHub release is used with a
 # pinned fallback, so this file never goes stale after a new release.
 VERSION="${AURORA_VERSION:-}"
-VERSION_DEFAULT="v2.7.0"
+VERSION_DEFAULT="v2.7.1"
 DATA_DIR="${AURORA_HOME:-$HOME/.local/share/aurora}"
 
 say()  { printf '\033[35m▚▚▚\033[0m %s\n' "$*"; }
@@ -33,6 +33,11 @@ esac
 if [ -n "${PREFIX:-}" ] && [ "${PREFIX}" = "/data/data/com.termux/files/usr" ]; then
   IS_TERMUX=1
   DEFAULT_BIN_DIR="${PREFIX}/bin"
+  if [ ! -f "$PREFIX/etc/tls/cert.pem" ] && [ ! -f "$PREFIX/etc/ssl/certs/ca-certificates.crt" ]; then
+    say "Встановлення системних сертифікатів (ca-certificates)..."
+    pkg install -y ca-certificates >/dev/null 2>&1 || true
+  fi
+  export SSL_CERT_FILE="${SSL_CERT_FILE:-$PREFIX/etc/tls/cert.pem}"
 else
   IS_TERMUX=0
   DEFAULT_BIN_DIR="$HOME/bin"
@@ -289,6 +294,14 @@ alias a-start='aurora start'
 alias a-stop='aurora stop'
 alias a-web='aurora login web'
 ALIASES
+  fi
+
+  if ! grep -q "SSL_CERT_FILE" "$BASHRC" 2>/dev/null; then
+    cat >> "$BASHRC" << 'CERTENV'
+
+# Fix TLS certificate lookup for Go binaries in Termux
+export SSL_CERT_FILE="/data/data/com.termux/files/usr/etc/tls/cert.pem"
+CERTENV
   fi
 
   # Налаштування автозапуску при перезавантаженні Android
