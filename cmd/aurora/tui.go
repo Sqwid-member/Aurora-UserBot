@@ -30,9 +30,7 @@ func cmdTUI(layout paths.Layout) error {
 	}
 	if c.wantUpdate {
 		if err := cmdUpdate(layout, "--force"); err != nil {
-			fmt.Printf("
-[31m✖ Помилка оновлення:[0m %v
-", err)
+			fmt.Printf("\n\033[31m✖ Помилка оновлення:\033[0m %v\n", err)
 			return err
 		}
 		fmt.Println("→ Перезапуск оновленої програми...")
