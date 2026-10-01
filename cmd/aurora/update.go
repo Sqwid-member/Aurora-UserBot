@@ -194,7 +194,7 @@ func cmdUpdate(layout paths.Layout, args ...string) error {
 	if !force && buildinfo.Version != "dev" && rel.TagName == buildinfo.Version {
 		fmt.Printf("\n\033[1;32m✓ У вас вже встановлено останню версію Aurora (%s).\033[0m\n", rel.TagName)
 		fmt.Println("  Оновлення не потрібне. Для примусового перевстановлення виконайте:")
-		fmt.Println("  \033[36maurora update --force\033[0m\n")
+		fmt.Println("  \033[36maurora update --force\033[0m")
 		return nil
 	}
 
@@ -353,7 +353,7 @@ func cmdUpdate(layout paths.Layout, args ...string) error {
 		}
 	}
 
-	fmt.Println("\n\033[1;32m🎉 ОНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО!\033[0m\n")
+	fmt.Println("\n\033[1;32m🎉 ОНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО!\033[0m")
 	return nil
 }
 
