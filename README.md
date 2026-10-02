@@ -157,6 +157,46 @@ Or manage them visually via the Web Dashboard.
 
 ---
 
+## CLI Reference
+
+```console
+$ aurora run                          # core: Telegram + plugins + panel
+$ aurora login                        # interactive login (phone → code → 2FA)
+$ aurora login qr                     # one-tap login on the same phone
+$ aurora login web                    # open the web panel for login
+$ aurora panel                        # print the panel URL with token
+$ aurora send [--silent] [--no-preview] @user "hi"
+$ aurora commands                     # list plugin commands
+$ aurora command <name> [text]        # run a plugin command
+$ aurora accounts                     # list Telegram accounts
+$ aurora accounts switch <id>         # switch the active account
+$ aurora sessions                     # list active Telegram sessions
+$ aurora sessions kill <hash>         # terminate a session
+$ aurora profile                      # show profile (name, username, bio)
+$ aurora gc                           # garbage-collect the core
+$ aurora plugins                      # list plugins
+$ aurora plugin start|stop|restart <name>
+$ aurora plugin install <git-url> [name]
+$ aurora plugin remove <name>
+$ aurora plugin settings <name> [k=v ...]   # empty value resets key to default
+$ aurora plugin settings <name> reset       # reset all settings to defaults
+$ aurora session                      # local session info
+$ aurora session export               # StringSession (Telethon/Pyrogram)
+$ aurora session import "1BVts…"      # import without SMS
+$ aurora session import-web <JSON|@file> [--dc N]  # Telegram Web export
+$ aurora backup [file]                # config+sessions bundle for moving
+$ aurora restore <file>               # restore (core must be stopped)
+$ aurora device [--save]              # device fingerprint snapshot
+$ aurora config                       # config (secrets masked) + validation
+$ aurora doctor                       # environment check
+$ aurora status                       # live daemon/auth/RAM status
+$ aurora logs                         # live log tail
+$ aurora update                       # self-update to the latest release
+$ aurora logout                       # close the Telegram session
+```
+
+---
+
 ## Documentation
 
 * [Plugin API Guide](docs/PLUGIN_API.md) — How to write plugins in Python, Go, Node.js, and Lua.

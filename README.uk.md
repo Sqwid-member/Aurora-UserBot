@@ -264,13 +264,25 @@ $ aurora login qr                     # вхід тапом на цьому ж �
 $ aurora device --save                # зліпок пристрою (автоматично при встановленні)
 $ aurora panel                        # надрукувати посилання з токеном
 $ aurora send @durov "привіт"         # надіслати
+$ aurora send --silent @durov "привіт"  # без звуку
+$ aurora commands                     # список команд плагінів
+$ aurora command <ім'я> [текст]       # виконати команду плагіна
+$ aurora accounts                     # список Telegram-акаунтів
+$ aurora accounts switch <id>         # перемкнути активний акаунт
+$ aurora sessions                     # список активних сесій Telegram
+$ aurora sessions kill <hash>         # завершити сесію
+$ aurora profile                      # профіль (ім'я, юзернейм, біо)
+$ aurora gc                           # збір сміття в ядрі
 $ aurora plugins                      # список
 $ aurora plugin start|stop|restart <ім'я>
 $ aurora plugin install <git-url>
 $ aurora plugin remove <ім'я>
+$ aurora plugin settings <ім'я> [к=зн ...]  # порожнє значення скидає ключ
+$ aurora plugin settings <ім'я> reset        # скинути все до дефолтів
 $ aurora session                      # інформація про сесію
 $ aurora session export               # StringSession для Telethon/Pyrogram
 $ aurora session import "1BVts…"      # імпорт без SMS
+$ aurora session import-web <JSON|@файл> [--dc N]  # експорт Telegram Web
 $ aurora backup [файл]                # зв'язка конфіг+сесії для переїзду
 $ aurora restore <файл>               # відновити (ядро зупинене)
 $ aurora config                       # конфіг + перевірка

@@ -118,6 +118,46 @@ $ a web
 
 ---
 
+## Справочник CLI
+
+```console
+$ aurora run                          # ядро: Telegram + плагины + панель
+$ aurora login                        # интерактивный вход (номер → код → 2FA)
+$ aurora login qr                     # вход тапом на этом же телефоне
+$ aurora login web                    # открыть веб-панель для входа
+$ aurora panel                        # напечатать ссылку панели с токеном
+$ aurora send [--silent] [--no-preview] @user "привет"
+$ aurora commands                     # список команд плагинов
+$ aurora command <имя> [текст]        # выполнить команду плагина
+$ aurora accounts                     # список Telegram-аккаунтов
+$ aurora accounts switch <id>         # переключить активный аккаунт
+$ aurora sessions                     # список активных сессий Telegram
+$ aurora sessions kill <hash>         # завершить сессию
+$ aurora profile                      # профиль (имя, юзернейм, био)
+$ aurora gc                           # сборка мусора в ядре
+$ aurora plugins                      # список плагинов
+$ aurora plugin start|stop|restart <имя>
+$ aurora plugin install <git-url> [имя]
+$ aurora plugin remove <имя>
+$ aurora plugin settings <имя> [к=зн ...]  # пустое значение = сброс ключа
+$ aurora plugin settings <имя> reset        # сбросить всё к дефолтам
+$ aurora session                      # информация о локальной сессии
+$ aurora session export               # StringSession (Telethon/Pyrogram)
+$ aurora session import "1BVts…"      # импорт без SMS
+$ aurora session import-web <JSON|@файл> [--dc N]  # экспорт Telegram Web
+$ aurora backup [файл]                # связка конфиг+сессии для переезда
+$ aurora restore <файл>               # восстановить (ядро остановлено)
+$ aurora device [--save]              # слепок устройства
+$ aurora config                       # конфиг (секреты скрыты) + проверка
+$ aurora doctor                       # проверка окружения
+$ aurora status                       # живой статус демона/сессии/RAM
+$ aurora logs                         # живой хвост логов
+$ aurora update                       # самообновление до последнего релиза
+$ aurora logout                       # закрыть сессию Telegram
+```
+
+---
+
 ## Документация
 
 * [Руководство по созданию плагинов (Plugin API)](docs/PLUGIN_API.ru.md) — примеры на Python, Go, Node.js, Lua.
