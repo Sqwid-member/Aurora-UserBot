@@ -404,6 +404,7 @@ func (h *Host) Commands() []CommandSpec {
 			continue
 		}
 		for _, c := range inst.Manifest.Commands {
+			c.Plugin = name
 			out = append(out, c)
 		}
 	}

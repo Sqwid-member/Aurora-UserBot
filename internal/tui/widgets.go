@@ -312,7 +312,7 @@ func (i *Input) Draw(f *Frame, x, y, w int, focused bool) {
 	line := y + 1
 	cellX := x + 1
 	row := display[i.Offset:]
-	if len(row) == 0 && i.Placeholder != "" && i.Value == nil {
+	if len(row) == 0 && i.Placeholder != "" && len(i.Value) == 0 {
 		f.TextLimit(cellX, line, inner, trunc(i.Placeholder, inner), Style{Fg: ColorFaint})
 	}
 

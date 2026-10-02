@@ -168,6 +168,11 @@ func (h *Host) SetPluginSettings(name string, values map[string]any) ([]SettingV
 		if !ok {
 			return nil, fmt.Errorf("unknown setting %q for plugin %q", key, name)
 		}
+		// null from the panel means "clear back to schema default".
+		if val == nil {
+			h.kv.Delete(settingKey(name, key))
+			continue
+		}
 		raw, err := encodeSettingValue(f, val)
 		if err != nil {
 			return nil, fmt.Errorf("setting %q: %w", key, err)

@@ -41,10 +41,22 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   setup               інтерактивне первинне налаштування (app_id, app_hash)
   login               авторизація в Telegram (номер → код → 2FA)
   login qr            вхід тапом по посиланню на цьому ж телефоні (без номера/SMS)
-  login web           авторизація у веб-панелі (QR / код / імпорт сесії)
+  login web           відкрити веб-панель для входу (QR / код / імпорт сесії)
   update              автоматично оновити юзербота до найновішої версії з GitHub
   panel               надрукувати адресу панелі та токен
-  send <peer> <текст>  надіслати повідомлення
+  send [--silent] [--no-preview] <peer> <текст>
+                      надіслати повідомлення
+  commands            список команд плагінів
+  command <ім'я> [текст]
+                      виконати команду плагіна
+  accounts            список Telegram-акаунтів
+  accounts switch <id>
+                      перемкнути активний акаунт
+  sessions            список активних сесій Telegram
+  sessions kill <hash>
+                      завершити сесію
+  profile             показати профіль (ім'я, юзернейм, біо)
+  gc                  примусовий збір сміття в ядрі
   plugins             список плагінів
   plugin ls           те саме
   plugin start <ім'я> запустити плагін
@@ -54,8 +66,13 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   plugin remove <ім'я>
   plugin settings <ім'я> [к=зн...]
                       показати/зберегти налаштування плагіна
+                      (порожнє значення скидає ключ до дефолту)
+  plugin settings <ім'я> reset
+                      скинути всі налаштування до дефолтних
 	session             інформація про локальну сесію
   session export      надрукувати StringSession (Telethon/Pyrogram)
+  session import-web <JSON|@файл> [--dc N]
+                      імпорт експорту Telegram Web (букмарклет)
   backup [файл]       зв'язка конфіг+сесії для переїзду
   restore <файл>      відновити зі зв'язки (ядро має бути зупинене)
   device [--save]     показати/зберегти зліпок пристрою для маскування входу
@@ -129,6 +146,18 @@ func run(args []string) error {
 		return cmdPanel(layout)
 	case "send":
 		return cmdSend(layout, args)
+	case "commands":
+		return cmdCommands(layout)
+	case "command":
+		return cmdRunCommand(layout, args)
+	case "accounts":
+		return cmdAccounts(layout, args)
+	case "sessions":
+		return cmdSessions(layout, args)
+	case "profile":
+		return cmdProfile(layout)
+	case "gc":
+		return cmdGC(layout)
 	case "plugins", "plugin":
 		return cmdPlugins(layout, args)
 	case "session":
@@ -274,12 +303,11 @@ func promptForLogin(ctx context.Context, a *app.App) {
 func cmdLogin(layout paths.Layout, args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
-		case "qr", "--qr", "-w":
+		case "web", "--web", "-w":
+			return cmdLoginWeb(layout)
+		case "qr", "--qr":
 			return cmdQRLogin(layout)
 		}
-	}
-	if len(args) > 0 && (args[0] == "--web" || args[0] == "web" || args[0] == "-w") {
-		return cmdLoginWeb(layout)
 	}
 	return cmdTerminalLogin(layout)
 }
@@ -378,8 +406,20 @@ func cmdPanel(layout paths.Layout) error {
 // ---- send ----
 
 func cmdSend(layout paths.Layout, args []string) error {
+	var silent, noPreview bool
+	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+		switch args[0] {
+		case "--silent", "-s":
+			silent = true
+		case "--no-preview", "--nopreview":
+			noPreview = true
+		default:
+			return fmt.Errorf("невідомий прапорець %q (доступні: --silent, --no-preview)", args[0])
+		}
+		args = args[1:]
+	}
 	if len(args) < 2 {
-		return errors.New("використання: aurora send <peer> <текст>")
+		return errors.New("використання: aurora send [--silent] [--no-preview] <peer> <текст>")
 	}
 	peer := args[0]
 	text := strings.Join(args[1:], " ")
@@ -410,7 +450,7 @@ func cmdSend(layout paths.Layout, args []string) error {
 			return errors.New("сесія Telegram не готова — перевірте логін")
 		}
 	}
-	res, err := a.Send(ctx, proto.SendRequest{Peer: args[0], Text: strings.Join(args[1:], " ")})
+	res, err := a.Send(ctx, proto.SendRequest{Peer: args[0], Text: strings.Join(args[1:], " "), Silent: silent, NoPreview: noPreview})
 	if err != nil {
 		return err
 	}
@@ -419,6 +459,189 @@ func cmdSend(layout paths.Layout, args []string) error {
 }
 
 // ---- plugins ----
+
+func requireDaemon(layout paths.Layout) (*daemonClient, error) {
+	client, err := newDaemonClient(layout)
+	if err != nil {
+		return nil, err
+	}
+	if !client.isAlive() {
+		return nil, errors.New("ядро Aurora не запущено (aurora start)")
+	}
+	return client, nil
+}
+
+// cmdGC runs a garbage-collection cycle in the core (same as the panel's GC).
+func cmdGC(layout paths.Layout) error {
+	client, err := requireDaemon(layout)
+	if err != nil {
+		return err
+	}
+	if err := client.triggerGC(); err != nil {
+		return err
+	}
+	fmt.Println("✓ GC виконано")
+	return nil
+}
+
+// cmdCommands lists plugin commands (mirrors the panel's runner dropdown).
+func cmdCommands(layout paths.Layout) error {
+	client, err := requireDaemon(layout)
+	if err != nil {
+		return err
+	}
+	cmds, err := client.getCommands()
+	if err != nil {
+		return err
+	}
+	if len(cmds) == 0 {
+		fmt.Println("Немає зареєстрованих команд (запустіть плагіни)")
+		return nil
+	}
+	fmt.Printf("%-20s %-14s %s\n", "КОМАНДА", "ПЛАГІН", "ОПИС")
+	for _, c := range cmds {
+		plug := c.Plugin
+		if plug == "" {
+			plug = "core"
+		}
+		fmt.Printf("%-20s %-14s %s\n", c.Name, plug, c.Description)
+	}
+	return nil
+}
+
+// cmdRunCommand executes one plugin command and prints its text output.
+func cmdRunCommand(layout paths.Layout, args []string) error {
+	if len(args) == 0 {
+		return errors.New("використання: aurora command <ім'я> [текст]")
+	}
+	client, err := requireDaemon(layout)
+	if err != nil {
+		return err
+	}
+	out, err := client.runCommand(args[0], strings.Join(args[1:], " "))
+	if err != nil {
+		return err
+	}
+	fmt.Println(out)
+	return nil
+}
+
+// cmdAccounts lists accounts or switches the active one.
+func cmdAccounts(layout paths.Layout, args []string) error {
+	client, err := requireDaemon(layout)
+	if err != nil {
+		return err
+	}
+	if len(args) >= 2 && args[0] == "switch" {
+		if err := client.activateAccount(args[1]); err != nil {
+			return err
+		}
+		fmt.Printf("✓ активний акаунт: %s\n", args[1])
+		return nil
+	}
+	if len(args) > 0 {
+		return errors.New("використання: aurora accounts [switch <id>]")
+	}
+	accs, err := client.getAccounts()
+	if err != nil {
+		return err
+	}
+	if len(accs) == 0 {
+		fmt.Println("Акаунтів немає — виконайте 'aurora login'")
+		return nil
+	}
+	fmt.Printf("%-24s %-16s %-12s %s\n", "ID", "НАЗВА", "СТАН", "КОРИСТУВАЧ")
+	for _, a := range accs {
+		mark := " "
+		if a.IsActive {
+			mark = "*"
+		}
+		who := a.Phone
+		if a.User != nil {
+			if a.User.Username != "" {
+				who = "@" + a.User.Username
+			} else {
+				who = strings.TrimSpace(a.User.First + " " + a.User.Last)
+			}
+		}
+		fmt.Printf("%s%-23s %-16s %-12s %s\n", mark, a.ID, a.Title, a.Session, who)
+	}
+	return nil
+}
+
+// cmdSessions lists other Telegram sessions and optionally terminates one.
+func cmdSessions(layout paths.Layout, args []string) error {
+	client, err := requireDaemon(layout)
+	if err != nil {
+		return err
+	}
+	if len(args) >= 2 && args[0] == "kill" {
+		hash, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			return fmt.Errorf("хеш сесії має бути числом, отримано %q", args[1])
+		}
+		if err := client.terminateSession(hash); err != nil {
+			return err
+		}
+		fmt.Println("✓ сесію завершено")
+		return nil
+	}
+	if len(args) > 0 {
+		return errors.New("використання: aurora sessions [kill <hash>]")
+	}
+	list, err := client.getSessions()
+	if err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		fmt.Println("Немає активних сесій.")
+		return nil
+	}
+	fmt.Printf("%-20s %-24s %-15s %s\n", "HASH", "ПРИСТРІЙ", "ЗАСТОСУНОК", "МІТКИ")
+	for _, s := range list {
+		dev := s.Device
+		if dev == "" {
+			dev = s.Platform
+		}
+		app := strings.TrimSpace(s.App + " " + s.AppVersion)
+		var tags []string
+		if s.Current {
+			tags = append(tags, "поточна")
+		}
+		if !s.OfficialApp {
+			tags = append(tags, "сторонній клієнт")
+		}
+		if s.PasswordPending {
+			tags = append(tags, "чекає 2FA")
+		}
+		fmt.Printf("%-20d %-24s %-15s %s\n", s.Hash, dev, app, strings.Join(tags, ", "))
+	}
+	return nil
+}
+
+// cmdProfile prints the self profile (read-only; editing lives in the panel).
+func cmdProfile(layout paths.Layout) error {
+	client, err := requireDaemon(layout)
+	if err != nil {
+		return err
+	}
+	p, err := client.getProfile()
+	if err != nil {
+		return err
+	}
+	name := strings.TrimSpace(p.User.First + " " + p.User.Last)
+	fmt.Printf("Ім'я:      %s\n", name)
+	if p.User.Username != "" {
+		fmt.Printf("Юзернейм:  @%s\n", p.User.Username)
+	}
+	if p.User.Phone != "" {
+		fmt.Printf("Телефон:   %s\n", p.User.Phone)
+	}
+	if p.About != "" {
+		fmt.Printf("Біо:       %s\n", p.About)
+	}
+	return nil
+}
 
 func cmdPlugins(layout paths.Layout, args []string) error {
 	a, err := mustApp(layout, "core")
@@ -503,6 +726,16 @@ func cmdPlugins(layout paths.Layout, args []string) error {
 			return errors.New("використання: aurora plugin settings <ім'я> [ключ=значення ...]")
 		}
 		name := args[0]
+		if len(args) == 2 && (args[1] == "reset" || args[1] == "--reset") {
+			if err := a.Plugins.ResetPluginSettings(name); err != nil {
+				return err
+			}
+			if err := a.KV.Flush(); err != nil {
+				return fmt.Errorf("скинуто в пам'яті, але flush на диск не вдався: %w", err)
+			}
+			fmt.Printf("✓ налаштування %s скинуто до дефолтних\n", name)
+			return nil
+		}
 		if len(args) == 1 {
 			fields, err := a.Plugins.PluginSettings(name)
 			if err != nil {
@@ -525,13 +758,28 @@ func cmdPlugins(layout paths.Layout, args []string) error {
 			}
 			return nil
 		}
+		// Типи полів потрібні, щоб порожнє значення трактувати як веб:
+		// text/password → порожній рядок, решта → null (дефолт схеми).
+		types := map[string]string{}
+		if fields, err := a.Plugins.PluginSettings(name); err == nil {
+			for _, f := range fields {
+				types[f.Field.Key] = f.Field.Type
+			}
+		}
 		values := make(map[string]any, len(args)-1)
 		for _, kv := range args[1:] {
 			k, v, ok := strings.Cut(kv, "=")
 			if !ok || strings.TrimSpace(k) == "" {
 				return fmt.Errorf("очікується ключ=значення, отримано %q", kv)
 			}
-			values[strings.TrimSpace(k)] = v
+			k = strings.TrimSpace(k)
+			if t, known := types[k]; !known {
+				return fmt.Errorf("невідомий ключ %q для плагіна %q", k, name)
+			} else if v == "" && t != "text" && t != "password" {
+				values[k] = nil
+			} else {
+				values[k] = v
+			}
 		}
 		saved, err := a.Plugins.SetPluginSettings(name, values)
 		if err != nil {
@@ -559,6 +807,7 @@ func cmdSession(layout paths.Layout, args []string) error {
 			return err
 		}
 		fmt.Println(s)
+		fmt.Fprintln(os.Stderr, "  ⚠ StringSession — це повний доступ до акаунта, нікому не пересилайте його.")
 		return nil
 	}
 	if len(args) > 0 && args[0] == "import" {
@@ -573,6 +822,43 @@ func cmdSession(layout paths.Layout, args []string) error {
 			return err
 		}
 		fmt.Println("✓ сесію імпортовано")
+		return nil
+	}
+	if len(args) > 0 && args[0] == "import-web" {
+		if len(args) < 2 {
+			return errors.New("використання: aurora session import-web <JSON|@файл> [--dc N]")
+		}
+		payload := args[1]
+		dc := 0
+		rest := args[2:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "--dc" && i+1 < len(rest) {
+				n, err := strconv.Atoi(rest[i+1])
+				if err != nil || n < 0 {
+					return fmt.Errorf("невірний --dc %q", rest[i+1])
+				}
+				dc = n
+				i++
+			} else {
+				return fmt.Errorf("невідомий аргумент: %s", rest[i])
+			}
+		}
+		if strings.HasPrefix(payload, "@") {
+			raw, err := os.ReadFile(strings.TrimPrefix(payload, "@"))
+			if err != nil {
+				return fmt.Errorf("читання файлу: %w", err)
+			}
+			payload = string(raw)
+		}
+		a, err := mustApp(layout, "core")
+		if err != nil {
+			return err
+		}
+		gotDC, err := a.ImportWebSession(dc, payload)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("✓ сесію імпортовано (DC %d)\n", gotDC)
 		return nil
 	}
 	info := tgc.InspectSession(layout.SessionFile())
@@ -612,8 +898,13 @@ func cmdConfig(layout paths.Layout) error {
 		return err
 	}
 	c := store.Get()
+	// Ніколи не друкуємо секрети відкрито: токен і хеш маскуються,
+	// повні значення видно лише у самому файлі (0o600).
+	masked := c
+	masked.Web.Token = maskSecret(masked.Web.Token)
+	masked.Telegram.AppHash = maskSecret(masked.Telegram.AppHash)
 	fmt.Println("#", store.Path())
-	buf, _ := proto.MarshalIndent(c)
+	buf, _ := proto.MarshalIndent(masked)
 	fmt.Println(string(buf))
 	if err := c.Validate(); err != nil {
 		fmt.Fprintln(os.Stderr, "\n⚠ "+err.Error())
@@ -851,7 +1142,7 @@ func cmdStart(layout paths.Layout) error {
 		if lp, err := sysx.LookPath("aurora"); err == nil {
 			bin = lp
 		} else {
-			bin = "/data/data/com.termux/files/usr/bin/aurora"
+			return fmt.Errorf("не знайдено бінарник aurora в PATH — запустіть зі встановленої копії")
 		}
 	}
 
@@ -931,8 +1222,37 @@ func cmdStatus(layout paths.Layout) error {
 	if rss := readProcessRSS(pid); rss != "" {
 		fmt.Printf("  Пам'ять:  %s\n", rss)
 	}
-	if sessionExists(layout) {
-		fmt.Printf("  Сесія:    авторизовано (%s)\n", layout.SessionFile())
+
+	// Живий стан через API ядра, а не за наявністю файла сесії:
+	// протухлий файл раніше брехав «авторизовано».
+	client, err := newDaemonClient(layout)
+	if err == nil && client.isAlive() {
+		if st, err := client.getStatus(); err == nil {
+			ram := fmt.Sprintf("%.1f MB", st.MemoryMB)
+			if st.MemLimitMB > 0 {
+				ram += fmt.Sprintf(" / %d MB", st.MemLimitMB)
+			}
+			fmt.Printf("  Ядро:     %s · %s · RAM %s · плагіни %d/%d\n",
+				st.Core, st.Version, ram, st.PluginsUp, st.PluginCount)
+		}
+		if auth, err := client.getAuth(); err == nil {
+			switch {
+			case auth.SignedIn:
+				phone := auth.Phone
+				if phone == "" {
+					phone = "авторизовано"
+				}
+				fmt.Printf("  Сесія:    ✓ %s\n", phone)
+			case auth.Connected:
+				fmt.Printf("  Сесія:    не авторизовано (стан: %s)\n", auth.State)
+			default:
+				fmt.Printf("  Сесія:    підключення до Telegram…\n")
+			}
+		} else {
+			fmt.Printf("  Сесія:    немає відповіді від ядра: %v\n", err)
+		}
+	} else if sessionExists(layout) {
+		fmt.Printf("  Сесія:    файл є (%s), ядро не відповідає — стан невідомий\n", layout.SessionFile())
 	} else {
 		fmt.Printf("  Сесія:    не авторизовано (виконайте 'aurora login')\n")
 	}

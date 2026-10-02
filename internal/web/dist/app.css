@@ -9,12 +9,11 @@
   --surface: var(--v2-background-bg-base);
   --surface-2: var(--v2-background-bg-layer-01);
   --surface-3: var(--v2-background-bg-layer-02);
-  --surface-4: var(--v2-background-bg-layer-03);
   --line: var(--v2-border-border-base);
   --line-strong: var(--v2-border-border-strong);
   --term-bg: var(--v2-background-bg-deep);
   --overlay: var(--v2-overlay-simple-overlay-scrim);
-  --btn-primary-hover: var(--v2-text-text-accent-hover);
+  --btn-primary-hover: color-mix(in srgb, var(--v2-background-bg-accent) 88%, #fff 12%);
 
   /* Текст */
   --text: var(--v2-text-text-base);
@@ -25,7 +24,6 @@
   --accent: var(--v2-text-text-accent);
   --accent-bg: var(--v2-background-bg-accent);
   --accent-ink: var(--v2-text-text-contrast);
-  --accent-soft: var(--v2-state-bg-info);
   --accent-soft: color-mix(in srgb, var(--v2-background-bg-accent) 18%, transparent);
   --ok: var(--v2-state-fg-success);
   --ok-soft: var(--v2-state-bg-success);
@@ -35,37 +33,25 @@
   --err-soft: var(--v2-state-bg-danger);
 
   /* Підняття та фокус (токени opencode) */
-  --shadow-raised: var(--v2-elevation-raised);
-  --shadow-floating: var(--v2-elevation-floating);
-  --shadow-overlay: var(--v2-elevation-overlay);
   --focus-ring: var(--v2-border-border-focus);
 
   /* Сумісність зі старими іменами (їх використовує app.js) */
   --md-primary: var(--accent);
-  --md-on-primary: var(--accent-ink);
   --md-primary-container: var(--accent-soft);
-  --md-success: var(--ok);
-  --md-success-container: var(--ok-soft);
-  --md-warning: var(--warn);
-  --md-warning-container: var(--warn-soft);
   --md-error: var(--err);
   --md-error-container: var(--err-soft);
-  --md-tertiary: var(--accent);
   --md-text-primary: var(--text);
   --md-text-secondary: var(--text-2);
   --md-text-tertiary: var(--text-3);
   --md-border-subtle: var(--line);
   --md-surface-input: var(--bg);
-  --text-muted: var(--text-2);
-  --text-dim: var(--text-3);
 
   /* Форми — метрики opencode (6px / 4px / 8px) */
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-pill: 6px;
+  --radius-pill: 9999px;
   --radius-full: 9999px;
   --control-height: 28px;
   --control-height-sm: 24px;
@@ -73,7 +59,6 @@
   /* Шрифти */
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --font-text: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
 
@@ -160,7 +145,7 @@ body {
    ========================================================================== */
 .header {
   position: relative;
-  z-index: 40;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -296,8 +281,6 @@ body {
   align-items: center;
   gap: 2px;
   overflow-x: auto;
-  margin-bottom: 28px;
-  border-bottom: 1px solid var(--line);
   scrollbar-width: none;
 }
 .tabs-nav::-webkit-scrollbar { display: none; }
@@ -309,7 +292,7 @@ body {
   padding: 10px 14px;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 440;
+  font-weight: 500;
   letter-spacing: -0.04px;
   line-height: 100%;
   cursor: pointer;
@@ -341,14 +324,25 @@ body {
 .tab-btn:hover .md-icon { transform: translateY(-1px); }
 
 .tab-btn:focus-visible, .modal-close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.tab-btn .badge {
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  line-height: 1.4;
   background: var(--surface-3);
-  padding: 0 7px;
-  border-radius: var(--radius-pill);
   color: var(--text-2);
+  border: 1px solid var(--line);
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.tab-btn .badge {
+  padding: 0 7px;
+  border: none;
   transition: background-color 0.25s, color 0.25s;
 }
 .tab-btn.active .badge { background: var(--accent-soft); color: var(--accent); }
@@ -413,13 +407,21 @@ body {
 .tab-section.active > *:nth-child(3) { animation-delay: 0.1s; }
 .tab-section.active > *:nth-child(4) { animation-delay: 0.15s; }
 
+/* Уніфікована авто-сітка карток (заміна 4 інлайн-грідів з різними minmax) */
+.auto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 18px;
+}
+.auto-grid.gap-top { margin-top: 10px; }
+
 /* Картки в сітках з'являються по черзі */
 .tab-section.active .cards-grid > *,
-.tab-section.active > div[style*="grid"] > * {
+.tab-section.active .auto-grid > * {
   animation: rise 0.6s var(--ease) backwards;
 }
-.tab-section.active .cards-grid > *:nth-child(1), .tab-section.active > div[style*="grid"] > *:nth-child(1) { animation-delay: 0.04s; }
-.tab-section.active .cards-grid > *:nth-child(2), .tab-section.active > div[style*="grid"] > *:nth-child(2) { animation-delay: 0.10s; }
+.tab-section.active .cards-grid > *:nth-child(1), .tab-section.active .auto-grid > *:nth-child(1) { animation-delay: 0.04s; }
+.tab-section.active .cards-grid > *:nth-child(2), .tab-section.active .auto-grid > *:nth-child(2) { animation-delay: 0.10s; }
 .tab-section.active .cards-grid > *:nth-child(3) { animation-delay: 0.16s; }
 .tab-section.active .cards-grid > *:nth-child(4) { animation-delay: 0.22s; }
 .tab-section.active .cards-grid > *:nth-child(5) { animation-delay: 0.28s; }
@@ -491,17 +493,17 @@ body {
   color: var(--accent-ink);
   font-weight: 600;
 }
-.btn-primary:hover { background: var(--accent-bg); border-color: transparent; color: var(--accent-ink); filter: brightness(1.08); }
-.btn-primary:active { filter: brightness(0.96); }
+.btn-primary:hover { background: var(--btn-primary-hover); border-color: transparent; color: var(--accent-ink); }
+.btn-primary:active { background: var(--accent-bg); filter: brightness(0.96); }
 
-.btn-success { color: var(--ok); border-color: transparent; }
-.btn-success:hover { color: var(--ok); border-color: transparent; background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.btn-success { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.btn-success:hover { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 65%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 
-.btn-warning { color: var(--warn); border-color: transparent; }
-.btn-warning:hover { color: var(--warn); border-color: transparent; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.btn-warning { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.btn-warning:hover { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 65%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
 
-.btn-danger { color: var(--err); border-color: transparent; }
-.btn-danger:hover { color: var(--err); border-color: transparent; background: color-mix(in srgb, var(--err) 12%, transparent); }
+.btn-danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
+.btn-danger:hover { color: var(--err); border-color: color-mix(in srgb, var(--err) 65%, transparent); background: color-mix(in srgb, var(--err) 12%, transparent); }
 
 .btn-sm { height: var(--control-height-sm); padding: 0 9px; border-radius: var(--radius-xs); font-size: 12px; }
 .ram-pill .btn-sm { height: 20px; padding: 0 8px; font-size: 11px; border-color: transparent; }
@@ -704,6 +706,7 @@ body {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 14px;
+  row-gap: 12px;
   margin-bottom: 20px;
 }
 
@@ -740,10 +743,10 @@ body {
   color: var(--text-2);
   border: 1px solid var(--line-strong);
 }
-.plugin-runtime-badge.python,
-.plugin-runtime-badge.go,
-.plugin-runtime-badge.node,
-.plugin-runtime-badge.lua { color: var(--text-2); border-color: var(--line-strong); }
+.plugin-runtime-badge.python { color: #4B8BBE; border-color: color-mix(in srgb, #4B8BBE 55%, transparent); background: color-mix(in srgb, #4B8BBE 10%, transparent); }
+.plugin-runtime-badge.go { color: #00ACD7; border-color: color-mix(in srgb, #00ACD7 55%, transparent); background: color-mix(in srgb, #00ACD7 10%, transparent); }
+.plugin-runtime-badge.node { color: #68A063; border-color: color-mix(in srgb, #68A063 55%, transparent); background: color-mix(in srgb, #68A063 10%, transparent); }
+.plugin-runtime-badge.lua { color: #8A7FB8; border-color: color-mix(in srgb, #8A7FB8 55%, transparent); background: color-mix(in srgb, #8A7FB8 10%, transparent); }
 
 .plugin-desc {
   font-size: 13px;
@@ -776,15 +779,6 @@ body {
 .plugin-stats-text { font-size: 11px; color: var(--text-3); }
 .plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
 /* ==========================================================================
    Термінал і логи
    ========================================================================== */
@@ -795,6 +789,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .terminal-header {
@@ -817,12 +812,12 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 14px 16px;
-  height: 480px;
+  height: clamp(280px, 55vh, 480px);
   overflow-y: auto;
   color: var(--text-2);
   line-height: 1.65;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .log-entry {
@@ -1168,7 +1163,7 @@ body {
   .app-container { padding: 18px 14px 90px; }
   .header { padding-bottom: 16px; }
   .cards-grid { grid-template-columns: 1fr; }
-  .terminal-body { height: 360px; }
+  .terminal-body { height: clamp(240px, 45vh, 360px); }
   .control-actions-grid { grid-template-columns: 1fr; }
   .toast-container { left: 14px; right: 14px; }
   .toast { min-width: 0; }
@@ -1178,108 +1173,6 @@ body {
 /* ==========================================================================
    Дрібні покращення
    ========================================================================== */
-
-/* Ручне введення RAM */
-.md3-slider-chip.is-hidden { display: none; }
-
-.ram-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 32px;
-  padding: 0 3px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  transition: border-color 0.25s var(--ease-soft), background-color 0.25s var(--ease-soft);
-}
-.ram-field:hover { border-color: var(--text-3); }
-.ram-field:focus-within { border-color: var(--accent); background: var(--bg); }
-
-.ram-field input {
-  width: 58px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  padding: 0;
-}
-.ram-unit { font-size: 11px; color: var(--text-3); margin: 0 4px 0 3px; font-family: var(--font-mono); }
-
-.ram-step {
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s, transform 0.3s var(--ease);
-}
-.ram-step:hover { background: var(--surface-3); color: var(--text); }
-.ram-step:active { transform: scale(0.88); }
-
-.shake { animation: shake 0.35s var(--ease-soft); }
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
-}
-
-/* Позначка «зараз» на доріжці */
-.ram-now {
-  position: absolute;
-  top: 3px;
-  width: 14px;
-  height: 14px;
-  margin-left: -7px;
-  cursor: help;
-  transition: left 0.7s var(--ease);
-}
-.ram-now::after {
-  content: "";
-  position: absolute;
-  left: 6px;
-  top: 0;
-  width: 2px;
-  height: 14px;
-  border-radius: 2px;
-  background: var(--text-3);
-}
-
-/* Пресети */
-.ram-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
-.preset-chip {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  padding: 5px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.3;
-  cursor: pointer;
-  transition: border-color 0.25s var(--ease-soft), color 0.25s var(--ease-soft),
-              background-color 0.25s var(--ease-soft), transform 0.3s var(--ease);
-}
-.preset-chip small { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.preset-chip:hover { border-color: var(--text-3); color: var(--text); background: var(--surface-2); }
-.preset-chip:active { transform: scale(0.96); }
-.preset-chip.active { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-.preset-chip.active small { color: var(--accent); }
 
 /* Пошук плагінів: кнопка очищення */
 .search-clear {
@@ -1331,10 +1224,6 @@ kbd {
 .spin { animation: spin 0.7s var(--ease); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 768px) {
-  .ram-field input { width: 52px; }
-}
-
 
 
 /* Плавне перемикання теми */
@@ -1347,20 +1236,27 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
    Загальні фішки
    ========================================================================== */
 
-/* Липка навігація */
+/* Липка навігація: повна ширина всередині .app-container (без просвітів з боків) */
 .tabs-nav {
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 40;
   background: var(--bg);
-  padding-top: 6px;
-  margin-top: -6px;
+  padding: 6px 24px 0;
+  margin: -6px -24px 28px;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 768px) {
+  .tabs-nav { padding: 6px 14px 0; margin: -6px -14px 20px; }
 }
 
 /* Сегментований контроль — як segmented-control-v2 в opencode */
 .seg {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
   height: var(--control-height);
   padding: 0;
   gap: 0;
@@ -1369,17 +1265,19 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   background: var(--surface-2);
   box-shadow: 0 0 0 0.5px var(--line);
 }
+.seg::-webkit-scrollbar { display: none; }
 .seg button {
   border: none;
   background: transparent;
   color: var(--text-2);
   font-family: inherit;
   font-size: 13px;
-  font-weight: 440;
+  font-weight: 500;
   line-height: 100%;
   letter-spacing: -0.04px;
   padding: 0 12px;
   height: 100%;
+  flex-shrink: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
   display: inline-flex;
@@ -1397,8 +1295,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 }
 .seg button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .seg em { font-style: normal; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-
-.plugins-header-bar { row-gap: 12px; }
+.auth-tabs button { white-space: nowrap; }
 .empty-note { color: var(--text-3); font-size: 13px; text-align: center; padding: 28px 0; }
 
 /* Поля-секрети */
@@ -1590,7 +1487,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
-  font-weight: 440;
+  font-weight: 500;
   line-height: 100%;
   letter-spacing: -0.04px;
   text-align: left;
@@ -1624,13 +1521,14 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 @media (max-width: 768px) {
   .theme-pop { width: min(300px, calc(100vw - 28px)); }
 }
-/* Повага до налаштування «зменшити рух» */
+/* Повага до налаштування «зменшити рух» (єдиний блок: нічого не губиться) */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -1730,7 +1628,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   margin-top: 10px;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   color: var(--accent);
   background: var(--bg);
   border: 1px solid var(--line);
@@ -1791,7 +1689,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   user-select: all;
 }
 

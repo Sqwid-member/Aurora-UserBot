@@ -92,6 +92,9 @@ type CommandSpec struct {
 	Aliases     []string `json:"aliases,omitempty"`
 	// InChat allows the command to be triggered by typing it in a chat.
 	InChat bool `json:"in_chat,omitempty"`
+	// Plugin is filled by the host when listing commands via API.
+	// It is omitted in manifests to keep plugin files clean.
+	Plugin string `json:"plugin,omitempty"`
 }
 
 // Setting field types rendered by the control panel.

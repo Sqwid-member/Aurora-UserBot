@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/web"
 )
 
@@ -20,7 +23,10 @@ type statusResponse struct {
 	Core          string  `json:"core"`
 	Version       string  `json:"version"`
 	MemoryMB      float64 `json:"memory_mb"`
+	MemLimitMB    int     `json:"mem_limit_mb"`
 	Session       string  `json:"session"`
+	PluginCount   int     `json:"plugin_count"`
+	PluginsUp     int     `json:"plugins_running"`
 	ActiveAccount string  `json:"active_account"`
 }
 
@@ -215,13 +221,89 @@ func (c *daemonClient) getPlugins() ([]pluginItem, error) {
 	return nil, errors.New("неочікувана відповідь /api/plugins")
 }
 
-// pluginAction starts or stops a plugin by name.
+// pluginAction starts or stops a plugin by name. Names are path-escaped
+// (the panel uses encodeURIComponent) so spaces and slashes survive routing.
 func (c *daemonClient) pluginAction(name, action string) error {
-	return c.request("POST", fmt.Sprintf("/api/plugins/%s/%s", name, action), nil, nil)
+	return c.request("POST", fmt.Sprintf("/api/plugins/%s/%s", url.PathEscape(name), action), nil, nil)
 }
 
 func (c *daemonClient) togglePlugin(accountID, pluginName string) error {
-	return c.request("POST", fmt.Sprintf("/api/accounts/%s/plugins/%s/toggle", accountID, pluginName), nil, nil)
+	return c.request("POST", fmt.Sprintf("/api/accounts/%s/plugins/%s/toggle", url.PathEscape(accountID), url.PathEscape(pluginName)), nil, nil)
+}
+
+// resetPluginSettings drops a plugin's stored settings back to schema
+// defaults (mirrors the panel's "Скинути" button).
+func (c *daemonClient) resetPluginSettings(name string) error {
+	return c.request("DELETE", "/api/plugins/"+url.PathEscape(name)+"/settings", nil, nil)
+}
+
+// commandSpec mirrors plugins.CommandSpec for the /api/commands listing.
+type commandSpec struct {
+	Name        string   `json:"name"`
+	Plugin      string   `json:"plugin"`
+	Usage       string   `json:"usage"`
+	Description string   `json:"description"`
+	Aliases     []string `json:"aliases"`
+}
+
+// getCommands lists every command exposed by running plugins.
+func (c *daemonClient) getCommands() ([]commandSpec, error) {
+	var cmds []commandSpec
+	if err := c.request("GET", "/api/commands", nil, &cmds); err != nil {
+		return nil, err
+	}
+	return cmds, nil
+}
+
+// runCommand executes a plugin command and returns its text output.
+func (c *daemonClient) runCommand(name, text string) (string, error) {
+	var out struct {
+		Text string `json:"text"`
+	}
+	if err := c.request("POST", "/api/command",
+		map[string]string{"name": name, "text": text}, &out); err != nil {
+		return "", err
+	}
+	return out.Text, nil
+}
+
+// getAccounts lists Telegram accounts known to the core.
+func (c *daemonClient) getAccounts() ([]proto.AccountInfo, error) {
+	var accs []proto.AccountInfo
+	if err := c.request("GET", "/api/accounts", nil, &accs); err != nil {
+		return nil, err
+	}
+	return accs, nil
+}
+
+// activateAccount switches the core to another account.
+func (c *daemonClient) activateAccount(id string) error {
+	return c.request("POST", "/api/accounts/"+url.PathEscape(id)+"/activate", nil, nil)
+}
+
+// getSessions lists active Telegram sessions (other devices).
+func (c *daemonClient) getSessions() ([]tgc.AuthSession, error) {
+	var wrapped struct {
+		Sessions []tgc.AuthSession `json:"sessions"`
+	}
+	if err := c.request("GET", "/api/sessions", nil, &wrapped); err != nil {
+		return nil, err
+	}
+	return wrapped.Sessions, nil
+}
+
+// terminateSession ends a session by hash (0 = current is rejected server-side).
+func (c *daemonClient) terminateSession(hash int64) error {
+	return c.request("POST", fmt.Sprintf("/api/sessions/%d/terminate", hash), nil, nil)
+}
+
+// getProfile reads the self profile (name, username, bio).
+func (c *daemonClient) getProfile() (tgc.FullProfile, error) {
+	var p tgc.FullProfile
+	if err := c.request("GET", "/api/profile", nil, &p); err != nil {
+		return p, err
+	}
+	return p, nil
 }
 
 func (c *daemonClient) send(peer, text string) error {

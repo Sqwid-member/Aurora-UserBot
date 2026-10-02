@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tui"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/web"
 )
@@ -55,6 +58,14 @@ type ctl struct {
 	authErr     string
 	plugins     []pluginItem
 	pluginErr   string
+	accounts    []proto.AccountInfo
+	accountErr  string
+	commands    []commandSpec
+	commandsErr string
+	sessions    []tgc.AuthSession
+	sessionsErr string
+	profile     *tgc.FullProfile
+	profileErr  string
 	pid         int
 	running     bool
 	panel       string
@@ -80,6 +91,14 @@ type snap struct {
 	authE    string
 	plugins  []pluginItem
 	plugE    string
+	accounts []proto.AccountInfo
+	accE     string
+	commands []commandSpec
+	cmdE     string
+	sessions []tgc.AuthSession
+	sesE     string
+	profile  *tgc.FullProfile
+	profE    string
 	notice   string
 	nErr     bool
 	nOn      bool
@@ -105,6 +124,14 @@ func (c *ctl) snapshot() snap {
 		authE:    c.authErr,
 		plugins:  c.plugins,
 		plugE:    c.pluginErr,
+		accounts: c.accounts,
+		accE:     c.accountErr,
+		commands: c.commands,
+		cmdE:     c.commandsErr,
+		sessions: c.sessions,
+		sesE:     c.sessionsErr,
+		profile:  c.profile,
+		profE:    c.profileErr,
 		notice:   c.notice,
 		nErr:     c.noticeErr,
 		busy:     c.busy,
@@ -184,6 +211,7 @@ func (c *ctl) refresh() {
 				} else {
 					plugErr = err.Error()
 				}
+				c.refreshExtra(client)
 			}
 		}
 
@@ -196,6 +224,78 @@ func (c *ctl) refresh() {
 		c.authAppOnly = authOnly
 		c.mu.Unlock()
 	}()
+}
+
+// refreshExtra pulls the heavy per-view endpoints, but only while their
+// view is actually on screen — polling accounts/sessions on every tick
+// would spam the core for data nobody is looking at.
+func (c *ctl) refreshExtra(client *daemonClient) {
+	var wantAcc, wantCmd, wantSes, wantProf bool
+	switch c.app.Current().(type) {
+	case *accountsView:
+		wantAcc = true
+	case *commandsView:
+		wantCmd = true
+	case *sessionsView:
+		wantSes = true
+	case *profileView:
+		wantProf = true
+	default:
+		return
+	}
+	var (
+		accs []proto.AccountInfo
+		accE string
+		cmds []commandSpec
+		cmdE string
+		sess []tgc.AuthSession
+		sesE string
+		prof *tgc.FullProfile
+		prE  string
+	)
+	if wantAcc {
+		if a, err := client.getAccounts(); err == nil {
+			accs = a
+		} else {
+			accE = err.Error()
+		}
+	}
+	if wantCmd {
+		if cm, err := client.getCommands(); err == nil {
+			cmds = cm
+		} else {
+			cmdE = err.Error()
+		}
+	}
+	if wantSes {
+		if sn, err := client.getSessions(); err == nil {
+			sess = sn
+		} else {
+			sesE = err.Error()
+		}
+	}
+	if wantProf {
+		if p, err := client.getProfile(); err == nil {
+			pp := p
+			prof = &pp
+		} else {
+			prE = err.Error()
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if wantAcc {
+		c.accounts, c.accountErr = accs, accE
+	}
+	if wantCmd {
+		c.commands, c.commandsErr = cmds, cmdE
+	}
+	if wantSes {
+		c.sessions, c.sessionsErr = sess, sesE
+	}
+	if wantProf {
+		c.profile, c.profileErr = prof, prE
+	}
 }
 
 // tick advances the spinner at 100ms and refreshes daemon state every ~1.5s.
@@ -259,9 +359,16 @@ func (c *ctl) panelURL() string {
 	return client.baseURL + "/?token=" + client.token
 }
 
+// quietMu serializes the process-global os.Stdout swap: quiet() runs on
+// worker goroutines while readers elsewhere may print, and without this
+// their lines would randomly vanish into /dev/null.
+var quietMu sync.Mutex
+
 // quiet redirects stdout while fn runs so CLI helpers do not scribble over
 // the alternate screen.
 func quiet(fn func() error) error {
+	quietMu.Lock()
+	defer quietMu.Unlock()
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		return fn()
@@ -297,6 +404,10 @@ func newMainView(c *ctl) *mainView {
 		{ID: "restart", Title: "Перезапустити", Desc: "aurora restart", Badge: "5", BadgeColor: tui.ColorKey},
 		{ID: "logs", Title: "Живий журнал логів", Desc: "останні рядки у вікні", Badge: "6", BadgeColor: tui.ColorKey},
 		{ID: "plugins", Title: "Плагіни", Desc: "список і перемикання", Badge: "7", BadgeColor: tui.ColorKey},
+		{ID: "accounts", Title: "Акаунти", Desc: "список і перемикання активного", Badge: "a", BadgeColor: tui.ColorKey},
+		{ID: "commands", Title: "Команди плагінів", Desc: "виконання з аргументами", Badge: "c", BadgeColor: tui.ColorKey},
+		{ID: "sessions", Title: "Сесії Telegram", Desc: "пристрої і завершення", Badge: "s", BadgeColor: tui.ColorKey},
+		{ID: "profile", Title: "Профіль", Desc: "ім'я, юзернейм, біо", Badge: "p", BadgeColor: tui.ColorKey},
 		{ID: "gc", Title: "Очистити пам'ять (GC)", Desc: "примусовий збір сміття", Badge: "8", BadgeColor: tui.ColorKey},
 		{ID: "setup", Title: "Налаштувати API ключі", Desc: "my.telegram.org", Badge: "9", BadgeColor: tui.ColorKey},
 		{ID: "info", Title: "Сеанс і діагностика", Desc: "aurora doctor", Badge: "i", BadgeColor: tui.ColorKey},
@@ -366,7 +477,7 @@ func (v *mainView) Draw(f *tui.Frame) {
 	v.list.Draw(f, 2, listTop, w-4, listH, true)
 
 	// footer
-	hint := " ↑↓ навігація · Enter — обрати · 1-9, 0, w, i, u — швидкий вибір · q — вихід"
+	hint := " ↑↓ навігація · Enter — обрати · 1-9, 0, w, i, u, a, c, s, p — швидкий вибір · r — оновити · q — вихід"
 	f.FillLine(0, h-2, w, tui.Truncate(hint, w), tui.Style{Fg: tui.ColorDim})
 
 	line := " " + tui.Truncate("Enter — обрати дію", w-2)
@@ -499,6 +610,14 @@ func (v *mainView) activate(id string) {
 		c.app.SetView(newLogsView(c))
 	case "plugins":
 		c.app.SetView(newPluginsView(c))
+	case "accounts":
+		c.app.SetView(newAccountsView(c))
+	case "commands":
+		c.app.SetView(newCommandsView(c))
+	case "sessions":
+		c.app.SetView(newSessionsView(c))
+	case "profile":
+		c.app.SetView(newProfileView(c))
 	case "gc":
 		c.run("очищення пам'яті", c.withClient(func(cl *daemonClient) error { return cl.triggerGC() }))
 	case "setup":
@@ -661,6 +780,11 @@ func cmdLegacyMenu(layout paths.Layout) error {
 		fmt.Println("  \033[1;36m[5]\033[0m Перезапустити юзербота")
 		fmt.Println("  \033[1;35m[6]\033[0m Живий журнал логів")
 		fmt.Println("  \033[1;36m[7]\033[0m Керування плагінами")
+		fmt.Println("  \033[1;36m[a]\033[0m Акаунти (список / перемикання)")
+		fmt.Println("  \033[1;36m[c]\033[0m Команди плагінів (список)")
+		fmt.Println("  \033[1;36m[s]\033[0m Сесії Telegram (список)")
+		fmt.Println("  \033[1;36m[p]\033[0m Профіль")
+		fmt.Println("  \033[1;32m[8]\033[0m Очищення пам'яті (RAM GC)")
 		fmt.Println("  \033[1;32m[8]\033[0m Очищення пам'яті (RAM GC)")
 		fmt.Println("  \033[1;33m[9]\033[0m Налаштувати власні API ключі")
 		fmt.Println("  \033[1;36m[u]\033[0m Оновити юзербота")
@@ -718,6 +842,18 @@ func cmdLegacyMenu(layout paths.Layout) error {
 			_ = cmdLogs(layout)
 		case "7":
 			menuManagePlugins(client, reader)
+		case "a", "A":
+			_ = cmdAccounts(layout, nil)
+			pressEnterToContinue(reader)
+		case "c", "C":
+			_ = cmdCommands(layout)
+			pressEnterToContinue(reader)
+		case "s", "S":
+			_ = cmdSessions(layout, nil)
+			pressEnterToContinue(reader)
+		case "p", "P":
+			_ = cmdProfile(layout)
+			pressEnterToContinue(reader)
 		case "8":
 			if client != nil && client.isAlive() {
 				if err := client.triggerGC(); err == nil {
@@ -743,11 +879,18 @@ func cmdLegacyMenu(layout paths.Layout) error {
 			fmt.Print("Ви дійсно бажаєте вийти з акаунта Telegram? [y/N]: ")
 			ans, _ := reader.ReadString('\n')
 			if strings.ToLower(strings.TrimSpace(ans)) == "y" {
+				// Один шлях виходу: через API живого ядра або локально,
+				// але ніколи обидва підряд (другий лише плутає стан).
 				if client != nil && client.isAlive() {
-					_ = client.logout()
+					if err := client.logout(); err != nil {
+						fmt.Println("✖ Помилка:", err)
+					} else {
+						fmt.Println("✓ Сесію завершено!")
+					}
+				} else {
+					_ = cmdLogout(layout)
+					fmt.Println("✓ Сесію завершено!")
 				}
-				_ = cmdLogout(layout)
-				fmt.Println("✓ Сесію завершено!")
 			}
 			pressEnterToContinue(reader)
 		case "q", "exit", "quit":
@@ -777,13 +920,37 @@ func menuManagePlugins(client *daemonClient, reader *bufio.Reader) {
 	fmt.Println("\n\033[1;36m🧩 СПИСОК ПЛАГІНІВ:\033[0m")
 	if len(plugins) == 0 {
 		fmt.Println("  (плагінів поки немає у папці ~/.local/share/aurora/plugins)")
+		pressEnterToContinue(reader)
+		return
 	}
 	for i, p := range plugins {
 		status := "\033[31mзупинено\033[0m"
-		if p.Running {
+		if p.isRunning() {
 			status = "\033[32mактивний\033[0m"
 		}
 		fmt.Printf("  [%d] %-15s [%s] — %s\n", i+1, p.Name, status, p.Desc)
+	}
+	fmt.Print("\n  Номер для старт/стоп, Enter — назад: ")
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	n, err := strconv.Atoi(line)
+	if err != nil || n < 1 || n > len(plugins) {
+		fmt.Println("  ✖ Невірний номер")
+		pressEnterToContinue(reader)
+		return
+	}
+	p := plugins[n-1]
+	action := "start"
+	if p.isRunning() {
+		action = "stop"
+	}
+	if err := client.pluginAction(p.Name, action); err != nil {
+		fmt.Println("  ✖ Помилка:", err)
+	} else {
+		fmt.Printf("  \033[32m✓ Плагін %s: %s виконано\033[0m\n", p.Name, action)
 	}
 	pressEnterToContinue(reader)
 }

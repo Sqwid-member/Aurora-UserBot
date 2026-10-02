@@ -66,7 +66,7 @@
           <svg class="md-icon sm" style="color:var(--md-text-tertiary); margin-left:2px;" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
         </div>
 
-        <div class="account-pop" id="account-pop" role="dialog" aria-label="Вибір акаунта">
+        <div class="account-pop" id="account-pop" role="menu" aria-label="Вибір акаунта">
           <div class="account-pop-header">
             <span class="account-pop-title">Telegram Акаунти</span>
             <span class="badge" id="accounts-count-badge">1</span>
@@ -103,9 +103,9 @@
         <button class="btn btn-sm" id="btn-theme" title="Тема (T)" aria-label="Тема" aria-haspopup="true" aria-expanded="false">
           <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5 11 5.67 11 6.5 10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
         </button>
-        <div class="theme-pop" id="theme-pop" role="dialog" aria-label="Тема">
+        <div class="theme-pop" id="theme-pop" role="menu" aria-label="Тема">
           <div class="theme-pop-title">Колірна схема</div>
-          <div class="seg" id="theme-mode">
+          <div class="seg" id="theme-mode" role="group" aria-label="Режим теми">
             <button type="button" data-mode="system">Системна</button>
             <button type="button" data-mode="light">Світла</button>
             <button type="button" data-mode="dark">Темна</button>
@@ -172,7 +172,7 @@
         <div class="card ram-card">
           <div class="card-title">
             <span>Гнучкий Менеджер RAM</span>
-            <span id="ram-burst-badge" class="badge" style="display:none; background:var(--md-error); color:#fff;">БУФЕР АКТИВНИЙ</span>
+            <span id="ram-burst-badge" class="badge" style="display:none; background:var(--md-error); color:#fff;">ПЕРЕВИЩЕННЯ ЛІМІТУ</span>
           </div>
           <div class="card-value" id="card-ram-val">0.0 MB</div>
           <div class="ram-meter-track">
@@ -181,7 +181,7 @@
           <div class="ram-legend">
             <span>База: <b id="card-ram-base">96</b> MB</span>
             <span id="card-ram-percent">0%</span>
-            <span>Буфер: <b id="card-ram-burst">128</b> MB</span>
+            <span>Буфер (скоро): <b id="card-ram-burst">96</b> MB</span>
           </div>
         </div>
 
@@ -207,7 +207,7 @@
       </div>
 
       <!-- Quick Actions Grid -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 10px;">
+      <div class="auto-grid gap-top">
         <!-- Quick Message Sender -->
         <div class="card">
           <div class="card-title">
@@ -237,7 +237,7 @@
             <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
           </div>
           <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:14px;">
-            Регулювання базового м'якого ліміту та аварійного буфера на льоту.
+            Регулювання базового ліміту пам'яті на льоту.
           </p>
 
           <!-- MD3 Base Slider -->
@@ -254,14 +254,14 @@
             </div>
           </div>
 
-          <!-- MD3 Burst Slider -->
-          <div class="md3-slider-card">
+          <!-- MD3 Burst Slider (зарезервовано: бекенд поки має лише mem_limit_mb) -->
+          <div class="md3-slider-card" style="opacity:.55;">
             <div class="md3-slider-meta">
-              <span class="md3-slider-title">Аварійний буфер</span>
-              <span class="md3-slider-chip" id="quick-tune-burst-chip">128 MB</span>
+              <span class="md3-slider-title">Аварійний буфер (скоро)</span>
+              <span class="md3-slider-chip" id="quick-tune-burst-chip">—</span>
             </div>
             <div class="md3-slider-track-wrap">
-              <input type="range" class="md3-slider-input" id="quick-tune-burst" min="64" max="2048" step="1" value="128">
+              <input type="range" class="md3-slider-input" id="quick-tune-burst" min="64" max="2048" step="1" value="128" disabled title="Зарезервовано — поки діє лише базовий ліміт">
               <div class="md3-slider-ticks">
                 <span>64M</span><span>512M</span><span>1024M</span><span>1536M</span><span>2048M</span>
               </div>
@@ -293,12 +293,16 @@
             <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </button>
         </div>
-        <div class="seg" id="plugins-filter" role="tablist" aria-label="Фільтр плагінів">
+        <div class="seg" id="plugins-filter" role="group" aria-label="Фільтр плагінів">
           <button type="button" class="active" data-f="all">Усі <em>0</em></button>
           <button type="button" data-f="running">Запущені <em>0</em></button>
           <button type="button" data-f="stopped">Зупинені <em>0</em></button>
         </div>
         <div style="display:flex; gap:10px;">
+          <button class="btn" id="btn-open-advisor">
+            <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+            <span>Аудит безпеки</span>
+          </button>
           <button class="btn btn-primary" id="btn-open-install-modal">
             <svg class="md-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             <span>Встановити плагін</span>
@@ -315,7 +319,7 @@
 
     <!-- Tab 3: Console & Messages -->
     <section class="tab-section" id="tab-console">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px;">
+      <div class="auto-grid">
         <!-- Command Runner -->
         <div class="card">
           <div class="card-title">
@@ -339,7 +343,10 @@
           
           <div style="margin-top:16px;">
             <label class="form-label">Результат виконання</label>
-            <pre id="cmd-result" style="background:var(--md-surface-input); border:1px solid var(--md-border-subtle); border-radius:var(--radius-md); padding:12px; min-height:85px; font-family:var(--font-mono); font-size:12px; color:var(--md-text-primary); white-space:pre-wrap; word-break:break-all;">Очікування виклику...</pre>
+            <div class="result-wrap">
+              <pre id="cmd-result" role="status" aria-live="polite" style="background:var(--md-surface-input); border:1px solid var(--md-border-subtle); border-radius:var(--radius-md); padding:12px; padding-right:90px; min-height:85px; font-family:var(--font-mono); font-size:12px; color:var(--md-text-primary); white-space:pre-wrap; overflow-wrap:anywhere;">Очікування виклику...</pre>
+              <button type="button" class="result-copy" id="btn-copy-cmd">Копіювати</button>
+            </div>
           </div>
         </div>
 
@@ -388,7 +395,7 @@
 
     <!-- Tab 4: Profile & Dangerous Zone -->
     <section class="tab-section" id="tab-profile">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+      <div class="auto-grid">
         <!-- Profile Form -->
         <div class="card">
           <div class="card-title">
@@ -482,15 +489,15 @@
 
     <!-- Tab 5: Settings & RAM -->
     <section class="tab-section" id="tab-settings">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+      <div class="auto-grid">
         <!-- Memory Guard Advanced -->
         <div class="card">
           <div class="card-title">
             <span>Гнучке Керування Пам'яттю (MemGuard)</span>
-            <span class="badge" style="background:var(--md-primary-container); color:var(--md-primary);">Auto-burst</span>
+            <span class="badge" style="background:var(--md-primary-container); color:var(--md-primary);">MemGuard</span>
           </div>
           <p style="font-size:12px; color:var(--md-text-secondary); margin-bottom:16px;">
-            Унікальний механізм для Termux та систем із лімітом оперативної пам'яті. Aurora тримає споживання на базовому рівні і тільки під час стрімінгу або піків відкриває аварійний буфер, запобігаючи аварійному закриттю процесу.
+            Механізм контролю пам'яті для Termux та систем із лімітом оперативної пам'яті. Aurora тримає споживання на базовому рівні (runtime.mem_limit_mb). Окремий аварійний буфер — зарезервовано для майбутнього релізу.
           </p>
 
           <form id="form-memory-tune">
@@ -509,19 +516,19 @@
               <div class="form-help">Цільове використання пам'яті в стані спокою.</div>
             </div>
 
-            <!-- Burst Slider -->
-            <div class="md3-slider-card">
+            <!-- Burst Slider (зарезервовано: бекенд поки має лише mem_limit_mb) -->
+            <div class="md3-slider-card" style="opacity:.55;">
               <div class="md3-slider-meta">
-                <span class="md3-slider-title">Аварійний буфер (Burst Ceiling)</span>
-                <span class="md3-slider-chip" id="setting-burst-chip">128 MB</span>
+                <span class="md3-slider-title">Аварійний буфер (Burst Ceiling) — скоро</span>
+                <span class="md3-slider-chip" id="setting-burst-chip">—</span>
               </div>
               <div class="md3-slider-track-wrap">
-                <input type="range" class="md3-slider-input" id="setting-burst-input" min="64" max="4096" step="1" value="128">
+                <input type="range" class="md3-slider-input" id="setting-burst-input" min="64" max="4096" step="1" value="128" disabled title="Зарезервовано — поки діє лише базовий ліміт">
                 <div class="md3-slider-ticks">
                   <span>64M</span><span>1024M</span><span>2048M</span><span>3072M</span><span>4096M</span>
                 </div>
               </div>
-              <div class="form-help">Максимальна межа під час завантаження великих файлів.</div>
+              <div class="form-help">Зарезервовано для майбутнього релізу. Зараз зберігається лише базовий ліміт.</div>
             </div>
 
             <button type="submit" class="btn btn-success" style="width:100%; margin-top:8px;">
@@ -548,21 +555,27 @@
             </div>
             <div class="form-group">
               <label class="form-label">Токен доступу (Web Token)</label>
-              <input type="text" class="form-input" id="setting-web-token" placeholder="Залиште порожнім, якщо не змінюється">
+              <div class="pw-wrap">
+                <input type="password" class="form-input" id="setting-web-token" placeholder="Залиште порожнім, якщо не змінюється" autocomplete="new-password">
+                <button type="button" class="pw-eye" data-pw-toggle="setting-web-token" title="Показати/сховати" aria-label="Показати/сховати пароль">👁</button>
+              </div>
             </div>
 
             <div class="form-group" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--md-border-subtle);">
               <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Ключі Telegram API</span>
-                <span class="badge" id="setting-tg-badge" style="font-size:10px;">Стандартні (2040)</span>
+                <span class="badge" id="setting-tg-badge" style="font-size:10px;">Стандартні (Web K)</span>
               </label>
               <div class="form-help" style="margin-bottom:8px;">За замовчуванням використовуються публічні ключі. Якщо виникають помилки чи обмеження, вкажіть власні з my.telegram.org.</div>
               <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                 <div>
-                  <input type="number" class="form-input" id="setting-tg-appid" placeholder="App ID (дефолт: 2040)">
+                  <input type="number" class="form-input" id="setting-tg-appid" placeholder="App ID (дефолт: Web K)">
                 </div>
                 <div>
-                  <input type="text" class="form-input" id="setting-tg-apphash" placeholder="App Hash (дефолт)">
+                  <div class="pw-wrap">
+                    <input type="password" class="form-input" id="setting-tg-apphash" placeholder="App Hash (дефолт)" autocomplete="new-password">
+                    <button type="button" class="pw-eye" data-pw-toggle="setting-tg-apphash" title="Показати/сховати" aria-label="Показати/сховати пароль">👁</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -600,7 +613,7 @@
               <svg class="md-icon sm" style="position:absolute; left:8px; color:var(--md-text-tertiary);" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
             </div>
 
-            <button class="btn btn-sm" id="btn-toggle-autoscroll" title="Автопрокрутка">
+            <button class="btn btn-sm active" id="btn-toggle-autoscroll" title="Автопрокрутка" aria-pressed="true">
               <svg class="md-icon sm" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
               <span>Авто</span>
             </button>
@@ -618,6 +631,7 @@
         <div class="terminal-body" id="logs-terminal">
           <!-- Live logs streaming via SSE -->
         </div>
+        <button type="button" class="log-jump" id="btn-log-jump">До кінця ↓</button>
       </div>
     </section>
   </main>
@@ -743,13 +757,13 @@
         <input type="text" class="form-input" id="add-acc-title" placeholder="Наприклад: Робочий, Твінк, Мій бот">
       </div>
       <div class="seg auth-tabs" id="add-acc-tabs" role="tablist" aria-label="Спосіб додавання">
-        <button type="button" class="active" data-add-acc-tab="code">Код</button>
-        <button type="button" data-add-acc-tab="qr">QR на цьому телефоні</button>
-        <button type="button" data-add-acc-tab="session">Імпорт сесії</button>
+        <button type="button" role="tab" aria-selected="true" aria-controls="add-acc-tab-code" data-add-acc-tab="code">Код</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="add-acc-tab-qr" data-add-acc-tab="qr">QR на цьому телефоні</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="add-acc-tab-session" data-add-acc-tab="session">Імпорт сесії</button>
       </div>
 
       <!-- Tab: code -->
-      <div id="add-acc-tab-code">
+      <div id="add-acc-tab-code" role="tabpanel">
         <div id="add-acc-step-phone">
           <form id="form-add-account-phone">
             <div class="form-group">
@@ -805,7 +819,7 @@
       </div>
 
       <!-- Tab: QR -->
-      <div id="add-acc-tab-qr" hidden>
+      <div id="add-acc-tab-qr" role="tabpanel" hidden>
         <p class="auth-lead">Без номера і SMS: тапніть посилання на <b>цьому ж телефоні</b> в <b>офіційному Telegram</b> і підтвердіть вхід. Акаунт створиться з вказаною вище назвою.</p>
         <div class="qr-box">
           <div class="qr-status" id="add-acc-qr-status">Посилання ще не запитано.</div>
@@ -823,7 +837,7 @@
       </div>
 
       <!-- Tab: session -->
-      <div id="add-acc-tab-session" hidden>
+      <div id="add-acc-tab-session" role="tabpanel" hidden>
         <p class="auth-lead"><b>StringSession</b> (Telethon-формат, починається з <code>1…</code>). Акаунт створиться з вказаною вище назвою.</p>
         <form id="form-add-account-import">
           <div class="form-group">

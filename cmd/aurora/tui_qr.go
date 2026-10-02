@@ -23,6 +23,7 @@ type qrView struct {
 	started bool
 	err     string
 	spins   int
+	polling bool // a qrState fetch is already in flight (Tick fires fast)
 }
 
 func newQRView(c *ctl) *qrView {
@@ -34,15 +35,30 @@ func newQRView(c *ctl) *qrView {
 func (v *qrView) Tick() {
 	v.mu.Lock()
 	v.spins++
-	started := v.started
-	hasURL := v.url != ""
+	started, hasURL, busy := v.started, v.url != "", v.polling
+	if started && hasURL && !busy {
+		v.polling = true
+	}
 	v.mu.Unlock()
 	v.c.tick()
-	if !started || !hasURL {
+	if !started || !hasURL || busy {
+		return
+	}
+	// Stop polling once the core reports the session: otherwise this view
+	// keeps hitting /api/auth/qr forever after success (web №8 analog).
+	if s := v.c.snapshot(); s.auth != nil && s.auth.SignedIn {
+		v.mu.Lock()
+		v.polling = false
+		v.mu.Unlock()
 		return
 	}
 	// Pull the token while waiting: Telegram expires and re-exports it.
 	go func() {
+		defer func() {
+			v.mu.Lock()
+			v.polling = false
+			v.mu.Unlock()
+		}()
 		client, err := newDaemonClient(v.c.layout)
 		if err != nil {
 			return
@@ -166,7 +182,9 @@ func (v *qrView) start() {
 	v.mu.Unlock()
 
 	c := v.c
-	c.run("qr-вхід", func() error {
+	// NOTE: success here means "token received", not "authorized" — the
+	// approval still happens in Telegram (the view shows it live).
+	c.run("запит токена", func() error {
 		client, err := newDaemonClient(c.layout)
 		if err != nil {
 			return err

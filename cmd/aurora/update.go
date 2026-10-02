@@ -172,11 +172,7 @@ func cmdUpdate(layout paths.Layout, args ...string) error {
 		if lp, err := sysx.LookPath("aurora"); err == nil {
 			targetPath = lp
 		} else {
-			if paths.IsTermux() {
-				targetPath = "/data/data/com.termux/files/usr/bin/aurora"
-			} else {
-				targetPath = filepath.Join(os.Getenv("HOME"), "bin", "aurora")
-			}
+			return fmt.Errorf("не знайдено бінарник aurora в PATH — оновіть вручну з GitHub releases")
 		}
 	}
 	if resolved, err := filepath.EvalSymlinks(targetPath); err == nil && resolved != "" {
