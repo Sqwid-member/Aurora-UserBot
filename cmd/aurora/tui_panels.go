@@ -310,7 +310,7 @@ func newLogsView(c *ctl) *logsView {
 }
 
 func (v *logsView) load() {
-	lines, err := tailFile(v.c.layout.LogFile(), 256<<10, 500)
+	lines, err := tailFile(v.c.layout.LogFile(), 1<<20, 2000)
 	v.mu.Lock()
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -360,9 +360,37 @@ func (v *logsView) Draw(f *tui.Frame) {
 		f.FillLine(2, 2, w-4, " журнал порожній — запустіть юзербота (клавіша 3 у меню)",
 			tui.Style{Fg: tui.ColorDim})
 	default:
-		bottom := len(lines) - scroll
-		if bottom > len(lines) {
-			bottom = len(lines)
+		// Long lines wrap instead of being cut: every physical row is
+		// scrollable, so the whole journal stays readable on a phone.
+		type logRow struct {
+			text string
+			st   tui.Style
+		}
+		rows := make([]logRow, 0, len(lines)+16)
+		for _, ln := range lines {
+			st := tui.Style{Fg: tui.ColorText}
+			up := strings.ToUpper(ln)
+			switch {
+			case strings.Contains(up, "ERROR") || strings.Contains(up, "FATAL"):
+				st = tui.Style{Fg: tui.ColorBad}
+			case strings.Contains(up, "WARN"):
+				st = tui.Style{Fg: tui.ColorWarn}
+			case strings.Contains(up, "DEBUG"):
+				st = tui.Style{Fg: tui.ColorDim}
+			}
+			for _, r := range tui.WrapLines(ln, w) {
+				rows = append(rows, logRow{r, st})
+			}
+		}
+		if limit := len(rows) - 1; limit >= 0 && scroll > limit {
+			scroll = limit
+			v.mu.Lock()
+			v.scroll = scroll
+			v.mu.Unlock()
+		}
+		bottom := len(rows) - scroll
+		if bottom > len(rows) {
+			bottom = len(rows)
 		}
 		top := bottom - body
 		if top < 0 {
@@ -373,17 +401,7 @@ func (v *logsView) Draw(f *tui.Frame) {
 			if idx >= bottom {
 				break
 			}
-			st := tui.Style{Fg: tui.ColorText}
-			up := strings.ToUpper(lines[idx])
-			switch {
-			case strings.Contains(up, "ERROR") || strings.Contains(up, "FATAL"):
-				st = tui.Style{Fg: tui.ColorBad}
-			case strings.Contains(up, "WARN"):
-				st = tui.Style{Fg: tui.ColorWarn}
-			case strings.Contains(up, "DEBUG"):
-				st = tui.Style{Fg: tui.ColorDim}
-			}
-			f.FillLine(0, 1+row, w, tui.Truncate(lines[idx], w), st)
+			f.FillLine(0, 1+row, w, rows[idx].text, rows[idx].st)
 		}
 	}
 
@@ -452,10 +470,9 @@ func (v *logsView) OnKey(k tui.Key) {
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	limit := len(v.lines) - 1
-	if limit < 0 {
-		limit = 0
-	}
+	// Upper bound is loose on purpose: lines wrap on screen, so the real
+	// range (in physical rows) is bigger — Draw clamps it exactly.
+	const huge = 1 << 30
 	switch k.Type {
 	case tui.KeyUp:
 		v.scroll++
@@ -468,14 +485,14 @@ func (v *logsView) OnKey(k tui.Key) {
 	case tui.KeyPgDn:
 		v.scroll -= 20
 	case tui.KeyHome:
-		v.scroll = limit
+		v.scroll = huge
 	case tui.KeyEnd:
 		v.scroll = 0
 	default:
 		return
 	}
-	if v.scroll > limit {
-		v.scroll = limit
+	if v.scroll > huge {
+		v.scroll = huge
 	}
 	if v.scroll < 0 {
 		v.scroll = 0
