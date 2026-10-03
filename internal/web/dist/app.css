@@ -431,11 +431,14 @@ body {
   white-space: nowrap;
   vertical-align: middle;
 }
-.tab-btn .badge {
-  padding: 0 7px;
+.tab-btn .badge,
+.tab-btn .status-dot {
   position: absolute;
   top: 6px;
   right: 6px;
+}
+.tab-btn .badge {
+  padding: 0 7px;
   transition: background-color 0.25s, color 0.25s, transform var(--dur-med) var(--spring);
 }
 .tab-btn.active .badge { transform: scale(1.06); }
@@ -584,14 +587,14 @@ body {
 }
 .btn .md-icon { width: 18px; height: 20px; transition: transform var(--dur-med) var(--ease-emphasized); }
 .btn:hover {
-  background: color-mix(in srgb, var(--m3-on-surface) 8%, transparent);
+  background: color-mix(in srgb, var(--m3-primary) 8%, transparent);
   border-color: var(--m3-outline);
   color: var(--m3-on-surface);
   box-shadow: none;
 }
 /* Експресивний морф: контейнер злегка «квадратиться» під пальцем */
 .btn:active {
-  background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent);
+  background: color-mix(in srgb, var(--m3-primary) 12%, transparent);
   border-radius: var(--m3-shape-l);
   transform: scale(0.98);
   box-shadow: none;
@@ -608,6 +611,7 @@ body {
   background: var(--m3-secondary-container);
   border-color: transparent;
   color: var(--m3-on-secondary-container);
+  border-radius: var(--m3-shape-m);
 }
 .btn:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
 
@@ -748,6 +752,7 @@ body {
 /* Доріжка: активна primary + 6px прозорий зазор + неактивна; поверх — стопи */
 .md3-slider-input::-webkit-slider-runnable-track {
   height: 4px;
+  margin-top: 18px;
   border-radius: var(--m3-shape-full);
   background:
     linear-gradient(to right,
@@ -917,7 +922,7 @@ body {
 .md3-switch:active .md3-switch-thumb { width: 24px; }
 .md3-switch input:checked + .md3-switch-track { background: var(--m3-primary); border-color: var(--m3-primary); }
 .md3-switch input:checked + .md3-switch-track .md3-switch-thumb {
-  transform: translateX(20px);
+  transform: translateX(16px);
   width: 24px;
   height: 24px;
   margin-top: -12px;
@@ -1408,7 +1413,7 @@ md-circular-progress { flex-shrink: 0; }
   transition: transform var(--dur-med) var(--spring), border-radius var(--dur-med) var(--ease-emphasized),
     box-shadow var(--dur-med) var(--ease-emphasized);
 }
-.fab-control-menu .md-icon { width: 28px; height: 28px; }
+.fab-control-menu .md-icon { width: 24px; height: 24px; }
 .fab-control-menu:hover { transform: scale(1.05); box-shadow: var(--m3-elev-3); filter: brightness(1.04); }
 .fab-control-menu:active { transform: scale(0.9) rotate(-8deg); border-radius: 14px; }
 

@@ -400,7 +400,10 @@
       const min = parseFloat(input.min) || 0;
       const max = parseFloat(input.max) || 100;
       const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
-      input.style.setProperty('--p', `${pct}%`);
+      // --p живе на обгортці: її читають і градієнт інпута, і бульбашка.
+      const wrap = input.closest('.md3-slider-track-wrap');
+      if (wrap) wrap.style.setProperty('--p', `${pct}%`);
+      else input.style.setProperty('--p', `${pct}%`);
       chip.textContent = `${val}${suffix}`;
       syncStops(val);
       syncBubble(val);
