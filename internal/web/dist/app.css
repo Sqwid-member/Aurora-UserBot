@@ -1,6 +1,8 @@
 /**
- * Aurora UserBot — мінімалістичний інтерфейс
- * Матова графітова палітра, один акцент, без світіння. Рух — тільки там, де він щось пояснює.
+ * Aurora UserBot — Material 3 Expressive
+ * Динамічна колірна система (рушій theme/index.js), експресивні форми,
+ * пружинний рух, тональні контейнери. Класи/ID не змінювати — на них
+ * зав'язані app.js хуки.
  */
 
 :root {
@@ -35,26 +37,79 @@
   /* Підняття та фокус (токени opencode) */
   --focus-ring: var(--v2-border-border-focus);
 
-  /* Сумісність зі старими іменами (їх використовує app.js) */
-  --md-primary: var(--accent);
-  --md-primary-container: var(--accent-soft);
-  --md-error: var(--err);
-  --md-error-container: var(--err-soft);
-  --md-text-primary: var(--text);
-  --md-text-secondary: var(--text-2);
-  --md-text-tertiary: var(--text-3);
-  --md-border-subtle: var(--line);
-  --md-surface-input: var(--bg);
+  /* === M3 Expressive: колірні ролі (поверх v2-рушія, адаптуються до теми) === */
+  --m3-primary: var(--accent);
+  --m3-on-primary: var(--accent-ink);
+  --m3-primary-container: var(--accent-soft);
+  --m3-on-primary-container: var(--accent);
+  --m3-secondary: color-mix(in srgb, var(--accent) 68%, var(--text) 32%);
+  --m3-on-secondary: var(--accent-ink);
+  --m3-secondary-container: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  --m3-on-secondary-container: var(--accent);
+  --m3-tertiary: var(--ok);
+  --m3-on-tertiary: var(--bg);
+  --m3-tertiary-container: var(--ok-soft);
+  --m3-on-tertiary-container: var(--ok);
+  --m3-error: var(--err);
+  --m3-on-error: var(--bg);
+  --m3-error-container: var(--err-soft);
+  --m3-on-error-container: var(--err);
+  --m3-surface: var(--surface);
+  --m3-surface-dim: var(--bg);
+  --m3-surface-bright: var(--surface-2);
+  --m3-surface-container-lowest: var(--bg);
+  --m3-surface-container-low: var(--surface);
+  --m3-surface-container: var(--surface-2);
+  --m3-surface-container-high: var(--surface-2);
+  --m3-surface-container-highest: var(--surface-3);
+  --m3-on-surface: var(--text);
+  --m3-on-surface-variant: var(--text-2);
+  --m3-surface-variant: var(--surface-2);
+  --m3-outline: var(--line-strong);
+  --m3-outline-variant: var(--line);
+  --m3-inverse-surface: var(--v2-background-bg-inverse);
+  --m3-inverse-on-surface: var(--v2-text-text-inverse);
+  --m3-inverse-primary: var(--v2-text-text-accent-hover, var(--accent));
+  --m3-scrim: var(--overlay);
+  --m3-shadow: #000;
+  --m3-surface-tint: var(--accent-bg);
+  --m3-elev-1: var(--v2-elevation-raised, 0 1px 2px rgba(0,0,0,.3));
+  --m3-elev-2: var(--v2-elevation-floating, 0 2px 6px 2px rgba(0,0,0,.25));
+  --m3-elev-3: var(--v2-elevation-overlay, 0 4px 8px 3px rgba(0,0,0,.3));
+  /* Стан-шари поверх контейнерів */
+  --m3-state-hover: var(--v2-overlay-simple-overlay-hover);
+  --m3-state-pressed: var(--v2-overlay-simple-overlay-pressed);
+  --m3-state-hover-primary: color-mix(in srgb, var(--accent) 8%, transparent);
+  --m3-state-pressed-primary: color-mix(in srgb, var(--accent) 12%, transparent);
 
-  /* Форми — метрики opencode (6px / 4px / 8px) */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-pill: 9999px;
-  --radius-full: 9999px;
-  --control-height: 28px;
-  --control-height-sm: 24px;
+  /* Сумісність зі старими іменами (їх використовує app.js + інлайн-стилі) */
+  --md-primary: var(--m3-primary);
+  --md-primary-container: var(--m3-primary-container);
+  --md-error: var(--m3-error);
+  --md-error-container: var(--m3-error-container);
+  --md-text-primary: var(--m3-on-surface);
+  --md-text-secondary: var(--m3-on-surface-variant);
+  --md-text-tertiary: var(--text-3);
+  --md-border-subtle: var(--m3-outline-variant);
+  --md-surface-input: var(--m3-surface-container-highest);
+
+  /* === M3 Expressive: форма (повні радіуси + нові збільшені кути) === */
+  --m3-shape-xs: 4px;
+  --m3-shape-s: 8px;
+  --m3-shape-m: 12px;
+  --m3-shape-l: 16px;
+  --m3-shape-xl: 20px;
+  --m3-shape-2xl: 28px;
+  --m3-shape-3xl: 32px;
+  --m3-shape-full: 9999px;
+  --radius-xs: var(--m3-shape-xs);
+  --radius-sm: var(--m3-shape-s);
+  --radius-md: var(--m3-shape-m);
+  --radius-lg: var(--m3-shape-l);
+  --radius-pill: var(--m3-shape-full);
+  --radius-full: var(--m3-shape-full);
+  --control-height: 40px;
+  --control-height-sm: 32px;
 
   /* Шрифти */
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -62,9 +117,38 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
 
-  /* Рух */
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* === M3 Expressive: типографічна шкала === */
+  --m3-display-l: 600 40px/44px var(--font-sans);
+  --m3-display-m: 600 34px/40px var(--font-sans);
+  --m3-headline-l: 600 26px/32px var(--font-sans);
+  --m3-headline-m: 600 22px/28px var(--font-sans);
+  --m3-title-l: 600 20px/26px var(--font-sans);
+  --m3-title-m: 600 16px/24px var(--font-sans);
+  --m3-title-s: 600 14px/20px var(--font-sans);
+  --m3-label-l: 500 14px/20px var(--font-sans);
+  --m3-label-m: 500 12px/16px var(--font-sans);
+  --m3-label-s: 500 11px/16px var(--font-sans);
+  --m3-body-l: 400 15px/24px var(--font-sans);
+  --m3-body-m: 400 14px/20px var(--font-sans);
+  --m3-body-s: 400 12px/16px var(--font-sans);
+
+  /* === M3 Expressive: рух (emphasized + пружина) === */
+  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-emphasized-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease: var(--ease-emphasized);
   --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --spring: var(--ease-emphasized);
+  --dur-short: 200ms;
+  --dur-med: 350ms;
+  --dur-long: 500ms;
+  --dur-xl: 700ms;
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    /* Експресивна пружина з легким перельотом — лише там, де підтримується linear() */
+    --spring: linear(0 0%, 0.34 12%, 0.72 28%, 1.02 42%, 1.13 52%, 1.06 62%, 0.99 72%, 1.01 82%, 1 90%, 1 100%);
+  }
 }
 
 * {
@@ -111,22 +195,22 @@ body {
 .brand:hover .md-icon.logo { transform: rotate(90deg); }
 
 /* Скролбар */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: var(--radius-full);
-  border: 2px solid transparent;
+  background: var(--m3-outline);
+  border-radius: var(--m3-shape-full);
+  border: 3px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb:hover { background: var(--m3-primary); background-clip: content-box; border: 3px solid transparent; }
 
-::selection { background: var(--accent-soft); color: var(--text); }
+::selection { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
 
-/* Видимий фокус з клавіатури — як у opencode */
+/* Видимий фокус з клавіатури — M3 primary-кільце */
 :focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2.5px;
+  outline: 3px solid var(--m3-primary);
+  outline-offset: 2px;
 }
 
 /* Layout */
@@ -159,24 +243,22 @@ body {
 .brand { display: flex; align-items: center; gap: 14px; }
 
 .brand-text h1 {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-  color: var(--text);
+  font: var(--m3-title-l);
+  letter-spacing: 0;
+  color: var(--m3-on-surface);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .version-pill {
-  font-size: 11px;
-  font-weight: 500;
+  font: var(--m3-label-m);
   font-family: var(--font-mono);
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--line);
+  padding: 4px 12px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+  border: none;
 }
 
 .brand-subtitle {
@@ -192,57 +274,58 @@ body {
   gap: 8px;
 }
 
-/* Пігулки */
+/* Пігулки статусу — M3 tonal chips */
 .status-pill,
 .user-pill,
 .ram-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 6px 12px;
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-2);
-  transition: border-color 0.25s var(--ease-soft);
+  background: var(--m3-secondary-container);
+  border: none;
+  padding: 6px 16px 6px 12px;
+  min-height: 40px;
+  border-radius: var(--m3-shape-s);
+  font: var(--m3-label-l);
+  color: var(--m3-on-secondary-container);
+  transition: background-color var(--dur-short) var(--ease-soft), transform var(--dur-med) var(--spring);
 }
-.status-pill:hover, .user-pill:hover, .ram-pill:hover { border-color: var(--line-strong); }
+.status-pill:hover, .user-pill:hover, .ram-pill:hover { filter: brightness(1.05); }
+.status-pill:active, .user-pill:active { transform: scale(0.97); }
 
-.user-pill { padding: 3px 12px 3px 3px; color: var(--text); }
-.ram-pill { padding: 4px 4px 4px 12px; gap: 10px; }
-.ram-pill b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
-.ram-pill > .md-icon { color: var(--text-3) !important; }
+.user-pill { padding: 4px 16px 4px 4px; color: var(--m3-on-secondary-container); }
+.ram-pill { padding: 4px 8px 4px 16px; gap: 10px; }
+.ram-pill b { color: inherit; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ram-pill > .md-icon { color: var(--m3-primary) !important; }
 
 .user-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-full);
-  background: var(--surface-3);
-  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+  color: var(--m3-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .ram-pill-bar-track {
-  width: 52px;
-  height: 3px;
-  background: var(--surface-3);
-  border-radius: var(--radius-pill);
+  width: 56px;
+  height: 8px;
+  background: var(--m3-surface-container-highest);
+  border-radius: var(--m3-shape-full);
   overflow: hidden;
 }
 .ram-pill-bar-fill {
   height: 100%;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  transition: width 0.7s var(--ease), background-color 0.4s;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+  transition: width 0.7s var(--ease-emphasized), background-color 0.4s;
 }
 .ram-pill-bar-fill.warning { background: var(--warn); }
-.ram-pill-bar-fill.burst { background: var(--err); }
+.ram-pill-bar-fill.burst { background: var(--m3-error); }
 
 /* Статус-крапка: без світіння, лише тихе кільце, що розходиться */
 .status-dot {
@@ -274,12 +357,12 @@ body {
 }
 
 /* ==========================================================================
-   Навігація: плоскі вкладки з лінією знизу
+   Навігація — M3 tabs: високі цілі, щільний індикатор-пігулка, стан-шари
    ========================================================================== */
 .tabs-nav {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: stretch;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -287,68 +370,76 @@ body {
 
 .tab-btn {
   background: transparent;
-  color: var(--text-2);
+  color: var(--m3-on-surface-variant);
   border: none;
-  padding: 10px 14px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.04px;
+  border-radius: var(--m3-shape-l) var(--m3-shape-l) 0 0;
+  padding: 12px 16px 10px;
+  min-height: 60px;
+  font: var(--m3-title-s);
+  letter-spacing: 0;
   line-height: 100%;
   cursor: pointer;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 4px;
   white-space: nowrap;
   position: relative;
-  transition: color 0.12s ease;
+  transition: color var(--dur-short) var(--ease-soft), background-color var(--dur-short) var(--ease-soft);
 }
+/* M3 active indicator — щільна пігулка під іконкою */
 .tab-btn::after {
   content: "";
   position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: -1px;
-  height: 1px;
-  border-radius: 1px 1px 0 0;
-  background: var(--text-3);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.35s var(--ease);
+  left: 50%;
+  bottom: 0;
+  width: 56px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--m3-primary);
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  transition: transform var(--dur-med) var(--ease-emphasized);
 }
-.tab-btn:hover { color: var(--text); }
-.tab-btn:hover::after { transform: scaleX(0.35); background: var(--text-3); }
-.tab-btn.active { color: var(--text); }
-.tab-btn.active::after { transform: scaleX(1); background: var(--text-3); }
-.tab-btn .md-icon { transition: transform 0.3s var(--ease); }
-.tab-btn:hover .md-icon { transform: translateY(-1px); }
+.tab-btn:hover { color: var(--m3-on-surface); background: var(--m3-state-hover); }
+.tab-btn:hover::after { transform: translateX(-50%) scaleX(0.4); background: var(--m3-on-surface-variant); }
+.tab-btn.active { color: var(--m3-primary); }
+.tab-btn.active::after { transform: translateX(-50%) scaleX(1); background: var(--m3-primary); }
+.tab-btn .md-icon { width: 24px; height: 24px; transition: transform var(--dur-med) var(--spring); }
+.tab-btn:hover .md-icon { transform: translateY(-2px) scale(1.06); }
+.tab-btn.active .md-icon { transform: none; }
+.tab-btn span:not(.badge):not(.status-dot) { font-size: 12px; }
 
-.tab-btn:focus-visible, .modal-close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.tab-btn:focus-visible, .modal-close:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
+/* Тональний чип — базова пігулка для лічильників і міток (колір можуть
+   перевизначати інлайн-стилі під конкретний статус) */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  font: var(--m3-label-s);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
-  background: var(--surface-3);
-  color: var(--text-2);
-  border: 1px solid var(--line);
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
   padding: 1px 8px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--m3-shape-full);
   white-space: nowrap;
   vertical-align: middle;
 }
 .tab-btn .badge {
   padding: 0 7px;
-  border: none;
-  transition: background-color 0.25s, color 0.25s;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  transition: background-color 0.25s, color 0.25s, transform var(--dur-med) var(--spring);
 }
-.tab-btn.active .badge { background: var(--accent-soft); color: var(--accent); }
+.tab-btn.active .badge { transform: scale(1.06); }
 
 /* ==========================================================================
-   Картки
+   Картки — M3 Expressive filled: тональна поверхня, великий радіус,
+   підняття при наведенні
    ========================================================================== */
 .cards-grid {
   display: grid;
@@ -359,41 +450,51 @@ body {
 
 .card,
 .plugin-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  background: var(--m3-surface-container);
+  border: none;
+  border-radius: var(--m3-shape-l);
   padding: 22px;
   position: relative;
-  transition: border-color 0.3s var(--ease-soft), background-color 0.3s var(--ease-soft), transform 0.4s var(--ease);
+  transition: background-color var(--dur-short) var(--ease-soft), transform var(--dur-med) var(--ease-emphasized),
+    box-shadow var(--dur-med) var(--ease-emphasized), border-radius var(--dur-med) var(--ease-emphasized);
 }
 .card:hover,
 .plugin-card:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-2);
+  background: var(--m3-surface-container-high);
+  box-shadow: var(--m3-elev-1);
+  transform: translateY(-2px);
 }
+.card:active,
+.plugin-card:active { border-radius: var(--m3-shape-m); }
 
 .card-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-2);
+  font: var(--m3-title-s);
+  color: var(--m3-on-surface-variant);
   margin-bottom: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
-.card-title .md-icon { color: var(--text-3); transition: color 0.25s, transform 0.4s var(--ease); }
-.card:hover .card-title .md-icon { color: var(--text-2); transform: translateX(2px); }
+.card-title .md-icon {
+  color: var(--m3-primary);
+  background: var(--m3-primary-container);
+  border-radius: var(--m3-shape-s);
+  padding: 6px;
+  width: 30px;
+  height: 30px;
+  transition: transform var(--dur-med) var(--spring);
+}
+.card:hover .card-title .md-icon { transform: translateX(2px) scale(1.06); }
 
 .card-value {
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.6px;
-  color: var(--text);
+  font: var(--m3-display-m);
+  letter-spacing: -0.5px;
+  color: var(--m3-on-surface);
   margin-bottom: 4px;
   font-variant-numeric: tabular-nums;
 }
-.card-subtext { font-size: 12px; color: var(--text-3); }
+.card-subtext { font: var(--m3-body-s); color: var(--m3-on-surface-variant); }
 
 .card p { line-height: 1.55; }
 
@@ -432,21 +533,21 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* RAM-картка */
+/* RAM-картка — M3 linear progress: 8px доріжка, заокруглений індикатор */
 .ram-meter-track {
-  height: 4px;
-  background: var(--surface-3);
-  border-radius: var(--radius-pill);
+  height: 8px;
+  background: var(--m3-surface-container-highest);
+  border-radius: var(--m3-shape-full);
   overflow: hidden;
   margin: 16px 0 10px;
 }
 .ram-meter-fill {
   height: 100%;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  transition: width 0.8s var(--ease), background-color 0.4s;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+  transition: width 0.8s var(--ease-emphasized), background-color 0.4s;
 }
-.ram-meter-fill.in-burst { background: var(--err); }
+.ram-meter-fill.in-burst { background: var(--m3-error); }
 
 .ram-legend {
   display: flex;
@@ -458,73 +559,137 @@ body {
 .ram-legend b { color: var(--text-2); font-weight: 500; }
 
 /* ==========================================================================
-   Кнопки
+   Кнопки — M3 Expressive: 5 конфігурацій, повний радіус, морф при натисканні
    ========================================================================== */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   height: var(--control-height);
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  padding: 0 24px;
+  border: 1px solid var(--m3-outline);
+  border-radius: var(--m3-shape-full);
   background: transparent;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
-  color: var(--text-2);
+  font: var(--m3-label-l);
+  color: var(--m3-primary);
   cursor: pointer;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  position: relative;
+  transition: background-color var(--dur-short) var(--ease-soft), color var(--dur-short) var(--ease-soft),
+    border-color var(--dur-short) var(--ease-soft), border-radius var(--dur-med) var(--ease-emphasized),
+    transform var(--dur-med) var(--spring), box-shadow var(--dur-med) var(--ease-emphasized);
 }
-.btn .md-icon { transition: transform 0.35s var(--ease); }
-.btn:hover { background: var(--surface-2); border-color: var(--text-3); color: var(--text); }
-.btn:active { background: var(--surface-3); }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
-.btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-
-.btn-primary {
-  background: var(--accent-bg);
+.btn .md-icon { width: 20px; height: 20px; transition: transform var(--dur-med) var(--ease-emphasized); }
+.btn:hover {
+  background: var(--m3-state-hover-primary);
+  border-color: var(--m3-outline);
+  color: var(--m3-primary);
+  box-shadow: var(--m3-elev-1);
+}
+/* Експресивний морф: контейнер злегка «квадратиться» під пальцем */
+.btn:active {
+  background: var(--m3-state-pressed-primary);
+  border-radius: var(--m3-shape-l);
+  transform: scale(0.98);
+  box-shadow: none;
+}
+.btn:disabled { opacity: 0.38; cursor: not-allowed; box-shadow: none; }
+.btn.active {
+  background: var(--m3-secondary-container);
   border-color: transparent;
-  color: var(--accent-ink);
-  font-weight: 600;
+  color: var(--m3-on-secondary-container);
 }
-.btn-primary:hover { background: var(--btn-primary-hover); border-color: transparent; color: var(--accent-ink); }
-.btn-primary:active { background: var(--accent-bg); filter: brightness(0.96); }
+.btn:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
 
-.btn-success { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
-.btn-success:hover { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 65%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+/* Filled — найвищий акцент дії */
+.btn-primary {
+  background: var(--m3-primary);
+  border-color: transparent;
+  color: var(--m3-on-primary);
+  box-shadow: var(--m3-elev-1);
+}
+.btn-primary:hover { background: var(--m3-primary); border-color: transparent; color: var(--m3-on-primary); box-shadow: var(--m3-elev-2); filter: brightness(1.06); }
+.btn-primary:active { background: var(--m3-primary); box-shadow: var(--m3-elev-1); filter: brightness(0.96); }
 
-.btn-warning { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
-.btn-warning:hover { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 65%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+/* Tonal — середній акцент у кольорі статусу */
+.btn-success {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border-color: transparent;
+  color: var(--ok);
+}
+.btn-success:hover { background: color-mix(in srgb, var(--ok) 20%, transparent); border-color: transparent; box-shadow: var(--m3-elev-1); }
+.btn-warning {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: transparent;
+  color: var(--warn);
+}
+.btn-warning:hover { background: color-mix(in srgb, var(--warn) 20%, transparent); border-color: transparent; box-shadow: var(--m3-elev-1); }
+.btn-danger {
+  background: var(--m3-error-container);
+  border-color: transparent;
+  color: var(--m3-on-error-container);
+}
+.btn-danger:hover { border-color: transparent; box-shadow: var(--m3-elev-1); filter: brightness(1.05); }
 
-.btn-danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
-.btn-danger:hover { color: var(--err); border-color: color-mix(in srgb, var(--err) 65%, transparent); background: color-mix(in srgb, var(--err) 12%, transparent); }
-
-.btn-sm { height: var(--control-height-sm); padding: 0 9px; border-radius: var(--radius-xs); font-size: 12px; }
-.ram-pill .btn-sm { height: 20px; padding: 0 8px; font-size: 11px; border-color: transparent; }
+.btn-sm { height: var(--control-height-sm); padding: 0 16px; font: var(--m3-label-m); }
+.btn-sm .md-icon { width: 18px; height: 18px; }
+/* Велика експресивна кнопка для головних дій форм */
+.btn-lg { height: 52px; padding: 0 32px; font: var(--m3-title-s); }
+.btn-lg .md-icon { width: 22px; height: 22px; }
+.ram-pill .btn-sm { height: 32px; padding: 0 12px; border-color: transparent; }
+/* Головна кнопка меню — тональна */
+.btn-control-menu {
+  background: var(--m3-secondary-container);
+  border-color: transparent;
+  color: var(--m3-on-secondary-container);
+}
+.btn-control-menu:hover { background: var(--m3-secondary-container); filter: brightness(1.05); box-shadow: var(--m3-elev-1); }
 
 .shortcut-badge {
   font-size: 10px;
   font-family: var(--font-mono);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--m3-outline);
   padding: 0 5px;
-  border-radius: var(--radius-xs);
-  color: var(--text-3);
+  border-radius: var(--m3-shape-xs);
+  color: var(--m3-on-surface-variant);
+}
+
+/* M3 icon button — 40px ціль, тональний контейнер в обраному стані */
+.btn-icon {
+  padding: 0;
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--m3-shape-full);
+  border: none;
+  background: transparent;
+  color: var(--m3-on-surface-variant);
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-soft), color var(--dur-short) var(--ease-soft),
+    border-radius var(--dur-med) var(--ease-emphasized), transform var(--dur-med) var(--spring);
+}
+.btn-icon:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
+.btn-icon:active { border-radius: var(--m3-shape-m); transform: scale(0.92); }
+.btn-icon .md-icon { margin: 0; width: 20px; height: 20px; }
+.btn-icon.active, .btn-icon[aria-pressed="true"] {
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
 }
 
 /* ==========================================================================
-   Повзунки
+   Повзунки — M3 Expressive slider: щільна доріжка, великий повзунок з гало
    ========================================================================== */
 .md3-slider-card {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
+  background: var(--m3-surface-container);
+  border: none;
+  border-radius: var(--m3-shape-l);
+  padding: 18px 20px;
   margin-bottom: 14px;
 }
 
@@ -532,30 +697,31 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-.md3-slider-title { font-size: 13px; font-weight: 500; color: var(--text); }
+.md3-slider-title { font: var(--m3-title-s); color: var(--m3-on-surface); }
 
 .md3-slider-chip {
+  font: var(--m3-label-l);
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 2px 10px;
-  border-radius: var(--radius-pill);
+  color: var(--m3-on-secondary-container);
+  background: var(--m3-secondary-container);
+  padding: 6px 12px;
+  border-radius: var(--m3-shape-s);
   font-variant-numeric: tabular-nums;
 }
 
-.md3-slider-track-wrap { position: relative; padding: 8px 0 4px; touch-action: pan-y; }
+.md3-slider-track-wrap { position: relative; padding: 14px 0 8px; touch-action: pan-y; }
 
 .md3-slider-input {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(to right, var(--accent) 0, var(--accent) var(--p, 0%), var(--surface-3) var(--p, 0%));
+  height: 16px;
+  border-radius: var(--m3-shape-full);
+  background:
+    linear-gradient(to right, var(--m3-primary) 0, var(--m3-primary) var(--p, 0%), transparent var(--p, 0%)),
+    var(--m3-surface-container-highest);
   outline: none;
   cursor: pointer;
   touch-action: pan-y;
@@ -564,28 +730,28 @@ body {
 .md3-slider-input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-full);
-  background: var(--text);
-  border: 3px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--line-strong);
+  width: 20px;
+  height: 20px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+  border: none;
+  box-shadow: var(--m3-elev-1);
   cursor: grab;
-  transition: transform 0.25s var(--ease), box-shadow 0.25s;
+  transition: transform var(--dur-med) var(--spring), box-shadow var(--dur-short) var(--ease-soft);
 }
-.md3-slider-input:hover::-webkit-slider-thumb { transform: scale(1.2); }
-.md3-slider-input:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.35); box-shadow: 0 0 0 1px var(--accent); }
-.md3-slider-input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent); }
+.md3-slider-input:hover::-webkit-slider-thumb { transform: scale(1.15); box-shadow: 0 0 0 10px var(--m3-state-hover-primary), var(--m3-elev-1); }
+.md3-slider-input:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.3); box-shadow: 0 0 0 14px var(--m3-state-pressed-primary), var(--m3-elev-2); }
+.md3-slider-input:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 4px; }
 
-.md3-slider-input::-moz-range-progress { height: 4px; background: var(--accent); border-radius: var(--radius-pill); }
-.md3-slider-input::-moz-range-track { height: 4px; background: var(--surface-3); border-radius: var(--radius-pill); }
+.md3-slider-input::-moz-range-progress { height: 16px; background: var(--m3-primary); border-radius: var(--m3-shape-full); }
+.md3-slider-input::-moz-range-track { height: 16px; background: var(--m3-surface-container-highest); border-radius: var(--m3-shape-full); }
 .md3-slider-input::-moz-range-thumb {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  background: var(--text);
-  border: 3px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--line-strong);
+  width: 20px;
+  height: 20px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+  border: none;
+  box-shadow: var(--m3-elev-1);
   cursor: grab;
 }
 
@@ -595,11 +761,12 @@ body {
   margin-top: 10px;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-3);
+  color: var(--m3-on-surface-variant);
 }
 
 /* ==========================================================================
-   Перемикачі
+   Перемикачі — M3 Expressive switch 52×32: контур, морфинг повзунка,
+   галочка в увімкненому стані
    ========================================================================== */
 .md3-switch {
   position: relative;
@@ -608,75 +775,102 @@ body {
   cursor: pointer;
   user-select: none;
   gap: 12px;
+  -webkit-tap-highlight-color: transparent;
 }
 .md3-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 
 .md3-switch-track {
-  width: 38px;
-  height: 22px;
-  background: var(--surface-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
+  width: 52px;
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--m3-surface-container-highest);
+  border: 2px solid var(--m3-outline);
+  border-radius: var(--m3-shape-full);
   position: relative;
-  transition: background-color 0.3s var(--ease-soft), border-color 0.3s var(--ease-soft);
+  transition: background-color var(--dur-short) var(--ease-emphasized), border-color var(--dur-short) var(--ease-emphasized);
 }
 .md3-switch-thumb {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: var(--radius-full);
-  background: var(--text-2);
-  transition: transform 0.4s var(--ease), background-color 0.3s, width 0.25s var(--ease);
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-outline);
+  transition: transform var(--dur-med) var(--spring), width var(--dur-med) var(--ease-emphasized),
+    height var(--dur-med) var(--ease-emphasized), margin var(--dur-med) var(--ease-emphasized),
+    background-color var(--dur-short) var(--ease-soft);
 }
-.md3-switch:active .md3-switch-thumb { width: 18px; }
-.md3-switch input:checked + .md3-switch-track { background: var(--accent-soft); border-color: var(--accent); }
-.md3-switch input:checked + .md3-switch-track .md3-switch-thumb { transform: translateX(16px); background: var(--accent); }
-.md3-switch:active input:checked + .md3-switch-track .md3-switch-thumb { transform: translateX(12px); }
-.md3-switch input:focus-visible + .md3-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.md3-switch-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Натискання розтягує повзунок — фірмовий експресивний жест */
+.md3-switch:active .md3-switch-thumb { width: 24px; }
+.md3-switch input:checked + .md3-switch-track { background: var(--m3-primary); border-color: var(--m3-primary); }
+.md3-switch input:checked + .md3-switch-track .md3-switch-thumb {
+  transform: translateX(20px);
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+  background: var(--m3-on-primary);
+}
+/* Галочка на увімкненому повзунку (малюється кольором треку) */
+.md3-switch input:checked + .md3-switch-track .md3-switch-thumb::after {
+  content: "✓";
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--m3-primary);
+}
+.md3-switch:active input:checked + .md3-switch-track .md3-switch-thumb { transform: translateX(12px); width: 28px; }
+.md3-switch input:focus-visible + .md3-switch-track { outline: 2px solid var(--m3-primary); outline-offset: 3px; }
 
-.md3-switch-label { font-size: 13px; font-weight: 500; color: var(--text); }
+.md3-switch-label { font: var(--m3-body-l); color: var(--m3-on-surface); }
 
 /* ==========================================================================
-   Поля форм
+   Поля форм — M3 Expressive filled text field: тональна заливка,
+   4px верх + кольоровий індикатор знизу
    ========================================================================== */
 .form-group { margin-bottom: 16px; }
 
 .form-label {
   display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-2);
+  font: var(--m3-body-s);
+  color: var(--m3-on-surface-variant);
   margin-bottom: 7px;
 }
 
 .form-input, .form-textarea, .form-select {
   width: 100%;
-  min-height: var(--control-height);
-  background: linear-gradient(180deg, var(--v2-alpha-light-2), var(--v2-alpha-light-0)), var(--surface);
+  min-height: 48px;
+  background: var(--m3-surface-container-highest);
   border: none;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--v2-elevation-button-neutral);
-  padding: 0 11px;
-  color: var(--text);
-  font-size: 14px;
+  border-radius: var(--m3-shape-xs) var(--m3-shape-xs) 0 0;
+  box-shadow: inset 0 -1px 0 var(--m3-on-surface-variant);
+  padding: 0 16px;
+  color: var(--m3-on-surface);
+  font: var(--m3-body-l);
   font-family: inherit;
-  outline: 1px solid transparent;
-  transition: background 85ms ease-out, outline-color 85ms ease-out;
+  outline: none;
+  transition: background-color var(--dur-short) var(--ease-soft), box-shadow var(--dur-short) var(--ease-emphasized);
 }
-.form-input::placeholder, .form-textarea::placeholder { color: var(--text-3); transition: opacity 0.25s; }
+.form-input::placeholder, .form-textarea::placeholder { color: var(--m3-on-surface-variant); opacity: 0.7; transition: opacity 0.25s; }
 .form-input:hover, .form-textarea:hover, .form-select:hover {
-  background:
-    linear-gradient(0deg, var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-    linear-gradient(180deg, var(--v2-alpha-light-2), var(--v2-alpha-light-0)), var(--surface);
+  background: color-mix(in srgb, var(--m3-on-surface) 6%, var(--m3-surface-container-highest));
+  box-shadow: inset 0 -1px 0 var(--m3-on-surface);
 }
 .form-input:focus, .form-textarea:focus, .form-select:focus {
-  outline-color: var(--focus-ring);
-  box-shadow: none;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--m3-on-surface) 9%, var(--m3-surface-container-highest));
+  box-shadow: inset 0 -2px 0 var(--m3-primary);
 }
 .form-input:focus::placeholder, .form-textarea:focus::placeholder { opacity: 0.4; }
+/* M3: індикатором фокуса є нижня лінія, кільце тут зайве */
+.form-input:focus-visible, .form-textarea:focus-visible, .form-select:focus-visible { outline: none; }
 
 .form-input[type="file"] { padding: 8px 10px; color: var(--text-2); font-size: 13px; }
 .form-input[type="file"]::file-selector-button {
@@ -694,8 +888,10 @@ body {
 }
 .form-input[type="file"]::file-selector-button:hover { background: var(--line-strong); }
 
-.form-textarea { min-height: 80px; padding: 7px 11px; resize: vertical; line-height: 1.45; }
-.form-help { font-size: 11px; color: var(--text-3); margin-top: 6px; }
+.form-textarea { min-height: 80px; padding: 12px 16px; resize: vertical; line-height: 1.45; }
+.form-help { font: var(--m3-body-s); color: var(--m3-on-surface-variant); margin-top: 6px; }
+.empty-note { color: var(--m3-on-surface-variant); font: var(--m3-body-l); text-align: center; padding: 28px 0; }
+.auth-lead { font: var(--m3-body-l); color: var(--m3-on-surface-variant); margin-bottom: 14px; }
 
 /* ==========================================================================
    Плагіни
@@ -725,23 +921,25 @@ body {
   margin-bottom: 8px;
 }
 .plugin-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
+  font: var(--m3-title-l);
+  letter-spacing: 0;
+  color: var(--m3-on-surface);
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
 .plugin-runtime-badge {
-  font-size: 10px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  font: var(--m3-label-m);
   font-family: var(--font-mono);
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-2);
-  border: 1px solid var(--line-strong);
+  padding: 0 12px;
+  border-radius: var(--m3-shape-s);
+  background: var(--m3-surface-container-highest);
+  color: var(--m3-on-surface-variant);
+  border: 1px solid var(--m3-outline-variant);
 }
 .plugin-runtime-badge.python { color: #4B8BBE; border-color: color-mix(in srgb, #4B8BBE 55%, transparent); background: color-mix(in srgb, #4B8BBE 10%, transparent); }
 .plugin-runtime-badge.go { color: #00ACD7; border-color: color-mix(in srgb, #00ACD7 55%, transparent); background: color-mix(in srgb, #00ACD7 10%, transparent); }
@@ -749,23 +947,30 @@ body {
 .plugin-runtime-badge.lua { color: #8A7FB8; border-color: color-mix(in srgb, #8A7FB8 55%, transparent); background: color-mix(in srgb, #8A7FB8 10%, transparent); }
 
 .plugin-desc {
-  font-size: 13px;
-  color: var(--text-2);
+  font: var(--m3-body-m);
+  color: var(--m3-on-surface-variant);
   margin-bottom: 14px;
   flex: 1;
 }
 
-.plugin-caps-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.plugin-caps-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 
+/* M3 assist chips — підняті, 8px, кольорова іконка-текст */
 .cap-chip {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  font: var(--m3-label-m);
   font-family: var(--font-mono);
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-3);
-  color: var(--text-2);
+  padding: 0 12px;
+  border-radius: var(--m3-shape-s);
+  background: var(--m3-surface-container-low);
+  border: 1px solid var(--m3-outline-variant);
+  box-shadow: var(--m3-elev-1);
+  color: var(--m3-on-surface-variant);
 }
-.cap-chip.danger { background: var(--err-soft); color: var(--err); }
+.cap-chip.danger { background: var(--m3-error-container); border-color: transparent; color: var(--m3-on-error-container); }
 
 .plugin-footer {
   display: flex;
@@ -774,22 +979,111 @@ body {
   gap: 10px;
   flex-wrap: wrap;
   padding-top: 14px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--m3-outline-variant);
 }
-.plugin-stats-text { font-size: 11px; color: var(--text-3); }
-.plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.plugin-stats-text { font: var(--m3-body-s); color: var(--m3-on-surface-variant); font-variant-numeric: tabular-nums; }
+.plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+/* ==========================================================================
+   Модальні вікна — M3 Expressive dialog: 28px, контейнерний тон, іконка
+   ========================================================================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--m3-scrim) 60%, transparent);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.active { display: flex; animation: fade var(--dur-med) var(--ease-emphasized); }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+.modal-box {
+  background: var(--m3-surface-container-high);
+  border: none;
+  border-radius: var(--m3-shape-2xl);
+  box-shadow: var(--m3-elev-3);
+  max-width: 620px;
+  width: 100%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pop var(--dur-long) var(--ease-emphasized);
+}
+@keyframes pop {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  padding: 20px 24px 8px;
+  border-bottom: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.modal-title {
+  font: var(--m3-headline-m);
+  letter-spacing: 0;
+  color: var(--m3-on-surface);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* Експресивна іконка діалога в тональному контейнері */
+.modal-title .md-icon {
+  color: var(--m3-on-primary-container);
+  background: var(--m3-primary-container);
+  border-radius: var(--m3-shape-m);
+  padding: 8px;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  border-radius: var(--m3-shape-full);
+  width: 40px;
+  height: 40px;
+  color: var(--m3-on-surface-variant);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--dur-short) var(--ease-soft), color var(--dur-short) var(--ease-soft),
+    border-radius var(--dur-med) var(--ease-emphasized), transform var(--dur-med) var(--spring);
+}
+.modal-close:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
+.modal-close:active { border-radius: var(--m3-shape-m); transform: rotate(90deg) scale(0.92); }
+
+.modal-body { padding: 16px 24px; overflow-y: auto; flex: 1; }
+.modal-footer {
+  padding: 16px 24px 20px;
+  border-top: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ==========================================================================
    Термінал і логи
    ========================================================================== */
 .terminal-card {
   background: var(--term-bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--m3-outline-variant);
+  border-radius: var(--m3-shape-l);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
+  box-shadow: var(--m3-elev-1);
 }
 
 .terminal-header {
@@ -843,119 +1137,40 @@ body {
 .log-level.DEBUG { color: var(--accent); }
 .log-msg { color: var(--text); }
 .log-fields { color: var(--text-3); margin-left: 8px; font-size: 11px; }
-
-/* ==========================================================================
-   Модальні вікна
-   ========================================================================== */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay);
-  z-index: 1000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.modal-overlay.active { display: flex; animation: fade 0.25s var(--ease-soft); }
-@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-
-.modal-box {
-  background: var(--v2-background-bg-layer-01);
-  border: none;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--v2-elevation-overlay);
-  max-width: 620px;
-  width: 100%;
-  max-height: 88vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: pop 0.45s var(--ease);
-}
-@keyframes pop {
-  from { opacity: 0; transform: translateY(14px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.modal-header {
-  padding: 18px 22px;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.modal-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.modal-title .md-icon { color: var(--text-2); }
-
-.modal-close {
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-pill);
-  width: 30px;
-  height: 30px;
-  color: var(--text-2);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s, color 0.2s, transform 0.4s var(--ease);
-}
-.modal-close:hover { background: var(--surface-3); color: var(--text); transform: rotate(90deg); }
-
-.modal-body { padding: 22px; overflow-y: auto; flex: 1; }
-.modal-footer {
-  padding: 14px 22px;
-  border-top: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 /* ==========================================================================
    Центр керування
    ========================================================================== */
 .control-menu-box { max-width: 680px; }
 
 .control-search-wrap { position: relative; margin-bottom: 18px; }
+/* M3 search bar — 56px, повний радіус, тональний контейнер */
 .control-search-input {
   width: 100%;
-  height: 36px;
-  background: linear-gradient(180deg, var(--v2-alpha-light-2), var(--v2-alpha-light-0)), var(--surface);
+  height: 56px;
+  background: var(--m3-surface-container-high);
   border: none;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--v2-elevation-button-neutral);
-  padding: 0 12px 0 40px;
-  font-size: 14px;
+  border-radius: var(--m3-shape-full);
+  box-shadow: var(--m3-elev-1);
+  padding: 0 20px 0 56px;
+  font: var(--m3-body-l);
   font-family: inherit;
-  color: var(--text);
-  outline: 1px solid transparent;
-  transition: background 85ms ease-out, outline-color 85ms ease-out;
+  color: var(--m3-on-surface-variant);
+  outline: none;
+  transition: background-color var(--dur-short) var(--ease-soft), box-shadow var(--dur-med) var(--ease-emphasized);
 }
-.control-search-input:hover {
-  background:
-    linear-gradient(0deg, var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-    linear-gradient(180deg, var(--v2-alpha-light-2), var(--v2-alpha-light-0)), var(--surface);
-}
-.control-search-input:focus { outline-color: var(--focus-ring); box-shadow: none; background: var(--surface); }
+.control-search-input:hover { box-shadow: var(--m3-elev-2); }
+.control-search-input:focus { background: var(--m3-surface-container-highest); color: var(--m3-on-surface); box-shadow: var(--m3-elev-2); }
 .control-search-icon {
   position: absolute;
-  left: 16px;
+  left: 20px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  color: var(--text-3);
+  color: var(--m3-on-surface-variant);
   pointer-events: none;
 }
+.control-search-icon .md-icon { width: 24px; height: 24px; }
 
 .control-section-header {
   font-size: 12px;
@@ -972,19 +1187,21 @@ body {
 }
 
 .control-action-card {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 14px;
+  background: var(--m3-surface-container);
+  border: none;
+  border-radius: var(--m3-shape-l);
+  padding: 16px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: border-color 0.25s var(--ease-soft), background-color 0.25s var(--ease-soft), transform 0.35s var(--ease);
+  transition: background-color var(--dur-short) var(--ease-soft), transform var(--dur-med) var(--ease-emphasized),
+    box-shadow var(--dur-med) var(--ease-emphasized), border-radius var(--dur-med) var(--ease-emphasized);
 }
-.control-action-card:hover { border-color: var(--text-3); background: var(--surface-2); transform: translateY(-2px); }
-.control-action-card:active { transform: scale(0.98); }
-.control-action-card.danger:hover { border-color: var(--err); }
+.control-action-card:hover { background: var(--m3-surface-container-high); box-shadow: var(--m3-elev-1); transform: translateY(-2px); }
+.control-action-card:active { transform: scale(0.97); border-radius: var(--m3-shape-m); box-shadow: none; }
+.control-action-card.danger:hover { background: var(--m3-error-container); }
+.control-action-card.danger:hover .control-action-title { color: var(--m3-on-error-container); }
 
 .control-actions-grid > .control-action-card { animation: rise 0.5s var(--ease) backwards; }
 .control-actions-grid > .control-action-card:nth-child(1) { animation-delay: 0.02s; }
@@ -998,73 +1215,92 @@ body {
 .control-actions-grid > .control-action-card:nth-child(9) { animation-delay: 0.26s; }
 .control-actions-grid > .control-action-card:nth-child(10) { animation-delay: 0.29s; }
 
-.control-action-icon { margin-bottom: 10px; display: flex; align-items: center; color: var(--text-2); transition: color 0.25s, transform 0.4s var(--ease); }
-.control-action-card:hover .control-action-icon { color: var(--text); transform: scale(1.08); }
-.control-action-card.danger .control-action-icon { color: var(--err); }
+.control-action-icon {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--m3-shape-m);
+  background: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
+  transition: transform var(--dur-med) var(--spring);
+}
+.control-action-icon .md-icon { width: 24px; height: 24px; }
+.control-action-card:hover .control-action-icon { transform: scale(1.08) rotate(-4deg); }
+.control-action-card.danger .control-action-icon { background: var(--m3-error-container); color: var(--m3-on-error-container); }
 
-.control-action-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
-.control-action-desc { font-size: 11px; color: var(--text-3); line-height: 1.4; }
+.control-action-title { font: var(--m3-title-s); color: var(--m3-on-surface); margin-bottom: 4px; }
+.control-action-desc { font: var(--m3-body-s); color: var(--m3-on-surface-variant); line-height: 1.4; }
 
 .quick-jumps-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .quick-jump-chip {
-  border: 1px solid var(--line);
-  color: var(--text-2);
-  padding: 6px 13px;
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 500;
+  border: 1px solid var(--m3-outline);
+  color: var(--m3-on-surface-variant);
+  background: var(--m3-surface-container-low);
+  box-shadow: var(--m3-elev-1);
+  padding: 0 16px;
+  height: 40px;
+  border-radius: var(--m3-shape-s);
+  font: var(--m3-label-l);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  transition: color 0.2s, border-color 0.2s, background-color 0.2s, transform 0.3s var(--ease);
+  gap: 8px;
+  transition: color var(--dur-short) var(--ease-soft), border-color var(--dur-short) var(--ease-soft),
+    background-color var(--dur-short) var(--ease-soft), border-radius var(--dur-med) var(--ease-emphasized),
+    transform var(--dur-med) var(--spring), box-shadow var(--dur-med) var(--ease-emphasized);
 }
-.quick-jump-chip:hover { color: var(--text); border-color: var(--text-3); background: var(--surface-2); }
-.quick-jump-chip:active { transform: scale(0.96); }
+.quick-jump-chip:hover { color: var(--m3-on-surface); border-color: var(--m3-outline); background: var(--m3-state-hover); box-shadow: var(--m3-elev-2); }
+.quick-jump-chip:active { transform: scale(0.96); border-radius: var(--m3-shape-full); }
 
 .eco-active-banner {
-  border: 1px solid var(--v2-state-border-success);
-  background: var(--ok-soft);
-  color: var(--ok);
-  padding: 8px 14px;
-  border-radius: var(--radius-md);
-  font-size: 12px;
+  border: none;
+  background: var(--m3-tertiary-container);
+  color: var(--m3-on-tertiary-container);
+  padding: 12px 16px;
+  border-radius: var(--m3-shape-m);
+  font: var(--m3-body-m);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 16px;
-  animation: rise 0.4s var(--ease) backwards;
+  animation: rise var(--dur-med) var(--ease-emphasized) backwards;
 }
 
 /* ==========================================================================
-   FAB (мобільний)
+   FAB — M3 Expressive medium: primary-контейнер, великий радіус, пружина
    ========================================================================== */
 .fab-control-menu {
   display: none;
   position: fixed;
-  bottom: 22px;
-  right: 22px;
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-pill);
-  background: var(--text);
-  color: var(--bg);
+  bottom: 24px;
+  right: 24px;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
   border: none;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 990;
-  transition: transform 0.35s var(--ease);
+  box-shadow: var(--m3-elev-3);
+  transition: transform var(--dur-med) var(--spring), border-radius var(--dur-med) var(--ease-emphasized),
+    box-shadow var(--dur-med) var(--ease-emphasized);
 }
-.fab-control-menu:hover { transform: scale(1.06); }
-.fab-control-menu:active { transform: scale(0.92); }
+.fab-control-menu .md-icon { width: 28px; height: 28px; }
+.fab-control-menu:hover { transform: scale(1.05); box-shadow: var(--m3-elev-3); filter: brightness(1.04); }
+.fab-control-menu:active { transform: scale(0.9) rotate(-8deg); border-radius: 14px; }
 
 @media (max-width: 768px) {
   .fab-control-menu { display: flex; animation: pop 0.6s var(--ease) 0.4s backwards; }
 }
 
 /* ==========================================================================
-   Сповіщення
+   Сповіщення — M3 snackbar: інверсна поверхня, 4px, виразний вхід
    ========================================================================== */
 .toast-container {
   position: fixed;
@@ -1084,25 +1320,25 @@ body {
 
 .toast {
   pointer-events: auto;
-  background: var(--v2-background-bg-layer-01);
+  background: var(--m3-inverse-surface);
   border: none;
-  box-shadow: var(--v2-elevation-floating);
-  padding: 12px;
-  border-radius: var(--radius-lg);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
+  box-shadow: var(--m3-elev-3);
+  padding: 14px 16px;
+  border-radius: var(--m3-shape-xs);
+  font: var(--m3-body-m);
+  color: var(--m3-inverse-on-surface);
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 250px;
+  gap: 12px;
+  min-width: 288px;
   position: relative;
   overflow: hidden;
-  animation: toastIn 0.5s var(--ease);
+  animation: toastIn var(--dur-med) var(--ease-emphasized);
 }
-.toast > span:first-child { display: flex; color: var(--ok); }
+.toast > span:first-child { display: flex; color: var(--m3-inverse-primary); }
 .toast.warn > span:first-child { color: var(--warn); }
 .toast.err > span:first-child { color: var(--err); }
+.toast b { color: var(--m3-inverse-on-surface); }
 
 /* Тонка лінія, що зменшується, показує, скільки ще триватиме сповіщення */
 .toast::after {
@@ -1110,9 +1346,10 @@ body {
   position: absolute;
   left: 0;
   bottom: 0;
-  height: 2px;
+  height: 3px;
   width: 100%;
-  background: var(--ok);
+  background: var(--m3-inverse-primary);
+  border-radius: 0 3px 3px 0;
   transform-origin: left center;
   animation: toastTimer 4s linear forwards;
 }
@@ -1120,37 +1357,36 @@ body {
 .toast.err::after { background: var(--err); }
 
 @keyframes toastIn {
-  from { opacity: 0; transform: translateX(24px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes toastTimer { to { transform: scaleX(0); } }
 
 /* ==========================================================================
-   Звіт аудиту
+   Звіт аудиту — тональні картки
    ========================================================================== */
 .advisor-card {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  background: var(--m3-surface-container);
+  border: none;
+  border-radius: var(--m3-shape-m);
   padding: 16px;
   margin-bottom: 12px;
-  animation: rise 0.5s var(--ease) backwards;
+  animation: rise var(--dur-long) var(--ease-emphasized) backwards;
 }
 .advisor-card:nth-child(2) { animation-delay: 0.06s; }
 .advisor-card:nth-child(3) { animation-delay: 0.12s; }
 
 .advisor-status-badge {
   display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
+  font: var(--m3-label-m);
+  padding: 6px 12px;
+  border-radius: var(--m3-shape-s);
   margin-bottom: 10px;
 }
-.advisor-status-badge.SAFE { background: var(--ok-soft); color: var(--ok); }
-.advisor-status-badge.WARNING { background: var(--warn-soft); color: var(--warn); }
+.advisor-status-badge.SAFE { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.advisor-status-badge.WARNING { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .advisor-status-badge.DANGEROUS,
-.advisor-status-badge.CRITICAL_DEFICIT { background: var(--err-soft); color: var(--err); }
+.advisor-status-badge.CRITICAL_DEFICIT { background: var(--m3-error-container); color: var(--m3-on-error-container); }
 
 /* ==========================================================================
    Вхід на сторінку: один спокійний рух
@@ -1178,12 +1414,12 @@ body {
 .search-clear {
   position: absolute;
   right: 8px;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--m3-shape-full);
   background: transparent;
-  color: var(--text-3);
+  color: var(--m3-on-surface-variant);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1191,10 +1427,10 @@ body {
   opacity: 0;
   transform: scale(0.7);
   pointer-events: none;
-  transition: opacity 0.25s var(--ease-soft), transform 0.35s var(--ease), background-color 0.2s, color 0.2s;
+  transition: opacity 0.25s var(--ease-soft), transform var(--dur-med) var(--spring), background-color 0.2s, color 0.2s;
 }
 .search-clear.visible { opacity: 1; transform: scale(1); pointer-events: auto; }
-.search-clear:hover { background: var(--surface-3); color: var(--text); }
+.search-clear:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
 
 /* Лічильник біографії */
 #profile-about-counter { transition: color 0.3s; font-variant-numeric: tabular-nums; }
@@ -1202,22 +1438,22 @@ body {
 #profile-about-counter.full { color: var(--err) !important; }
 
 /* Логи */
-.log-count { margin-left: 10px; font-size: 11px; color: var(--text-3); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.log-entry { cursor: copy; }
-.log-entry.copied { background: var(--accent-soft); }
+.log-count { margin-left: 10px; font-size: 11px; color: var(--m3-on-surface-variant); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.log-entry { cursor: copy; border-radius: var(--m3-shape-xs); }
+.log-entry.copied { background: var(--m3-primary-container); }
 
 /* Гарячі клавіші */
-.hotkeys-row { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--text-3); }
+.hotkeys-row { display: flex; flex-wrap: wrap; gap: 6px 18px; font: var(--m3-body-s); color: var(--m3-on-surface-variant); }
 .hotkey { display: inline-flex; align-items: center; gap: 4px; }
 kbd {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-2);
-  padding: 1px 6px;
-  border: 1px solid var(--line-strong);
+  color: var(--m3-on-surface-variant);
+  padding: 2px 8px;
+  background: var(--m3-surface-container-highest);
+  border: 1px solid var(--m3-outline-variant);
   border-bottom-width: 2px;
-  border-radius: var(--radius-xs);
-  background: var(--surface);
+  border-radius: var(--m3-shape-xs);
 }
 
 /* Іконка оновлення */
@@ -1250,97 +1486,104 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   .tabs-nav { padding: 6px 14px 0; margin: -6px -14px 20px; }
 }
 
-/* Сегментований контроль — як segmented-control-v2 в opencode */
+/* Сегментовані кнопки M3: повний радіус, контур, галочка вибору */
 .seg {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
-  height: var(--control-height);
+  min-height: var(--control-height);
   padding: 0;
   gap: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  box-shadow: 0 0 0 0.5px var(--line);
+  border: 1px solid var(--m3-outline);
+  border-radius: var(--m3-shape-full);
+  background: transparent;
 }
 .seg::-webkit-scrollbar { display: none; }
 .seg button {
   border: none;
+  border-right: 1px solid var(--m3-outline);
   background: transparent;
-  color: var(--text-2);
+  color: var(--m3-on-surface);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 100%;
-  letter-spacing: -0.04px;
-  padding: 0 12px;
-  height: 100%;
+  font: var(--m3-label-l);
+  letter-spacing: 0;
+  padding: 0 16px;
+  min-height: var(--control-height);
   flex-shrink: 0;
-  border-radius: var(--radius-sm);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   font-variant-numeric: tabular-nums;
-  transition: background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  transition: background-color var(--dur-short) var(--ease-soft), color var(--dur-short) var(--ease-soft);
 }
-.seg button:hover { color: var(--text); }
+.seg button:last-child { border-right: none; }
+.seg button:first-child { border-radius: var(--m3-shape-full) 0 0 var(--m3-shape-full); }
+.seg button:last-child { border-radius: 0 var(--m3-shape-full) var(--m3-shape-full) 0; }
+.seg button:only-child { border-radius: var(--m3-shape-full); }
+.seg button:hover { background: var(--m3-state-hover-primary); }
 .seg button.active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 0 0 0.5px var(--line-strong);
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
 }
-.seg button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.seg em { font-style: normal; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* Експресивна галочка обраного сегмента */
+.seg button.active::before {
+  content: "✓";
+  font-size: 14px;
+  font-weight: 700;
+  margin-left: -4px;
+}
+.seg button:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 1px; }
+.seg em { font-style: normal; font-size: 11px; color: inherit; opacity: 0.7; font-variant-numeric: tabular-nums; }
 .auth-tabs button { white-space: nowrap; }
-.empty-note { color: var(--text-3); font-size: 13px; text-align: center; padding: 28px 0; }
 
 /* Поля-секрети */
 .pw-wrap { position: relative; }
 .pw-wrap .form-input { padding-right: 42px; }
 .pw-eye {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--m3-shape-full);
   background: transparent;
-  color: var(--text-3);
+  color: var(--m3-on-surface-variant);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
+  transition: background-color var(--dur-short) var(--ease-soft), color var(--dur-short) var(--ease-soft),
+    border-radius var(--dur-med) var(--ease-emphasized), transform var(--dur-med) var(--spring);
 }
-.pw-eye:hover { background: var(--surface-3); color: var(--text); }
+.pw-eye:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
+.pw-eye:active { border-radius: var(--m3-shape-m); transform: translateY(-50%) scale(0.9); }
 
-/* Результат команди */
+/* Результат команди — тональна кнопка копіювання */
 .result-wrap { position: relative; }
 .result-copy {
   position: absolute;
   top: 8px;
   right: 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text-2);
+  border: none;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 10px;
+  font: var(--m3-label-m);
+  padding: 6px 14px;
   cursor: pointer;
   opacity: 0;
   transform: translateY(-2px);
-  transition: opacity 0.25s var(--ease-soft), transform 0.3s var(--ease), color 0.2s;
+  transition: opacity 0.25s var(--ease-soft), transform var(--dur-med) var(--ease-emphasized);
 }
 .result-wrap:hover .result-copy, .result-copy:focus-visible { opacity: 1; transform: none; }
-.result-copy:hover { color: var(--text); }
+.result-copy:active { transform: scale(0.95); }
 
 /* Копіювання кліком */
 .copyable { cursor: copy; }
@@ -1349,30 +1592,31 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 /* Сповіщення закриваються кліком */
 .toast { cursor: pointer; }
 
-/* Кнопка «До кінця» у логах */
+/* Кнопка «До кінця» у логах — тональна пігулка */
 .log-jump {
   position: absolute;
   right: 16px;
   bottom: 16px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  color: var(--text);
+  gap: 8px;
+  padding: 0 20px;
+  height: 48px;
+  border: none;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
+  box-shadow: var(--m3-elev-2);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  font: var(--m3-label-l);
   cursor: pointer;
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
-  transition: opacity 0.3s var(--ease-soft), transform 0.4s var(--ease), border-color 0.2s;
+  transition: opacity var(--dur-short) var(--ease-soft), transform var(--dur-med) var(--spring);
 }
 .log-jump.visible { opacity: 1; transform: none; pointer-events: auto; }
-.log-jump:hover { border-color: var(--text-3); }
+.log-jump:active { transform: scale(0.95); }
 
 /* Клавіатурний фокус у Центрі керування */
 .control-action-card.kbd-focus {
@@ -1384,29 +1628,31 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .app-footer {
   margin-top: 36px;
   padding-top: 16px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--m3-outline-variant);
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 12px;
-  color: var(--text-3);
+  font: var(--m3-body-s);
+  color: var(--m3-on-surface-variant);
 }
 .sync { display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
 .link-btn {
   border: none;
   background: transparent;
-  color: var(--text-3);
+  color: var(--m3-on-surface-variant);
   font-family: inherit;
-  font-size: 12px;
+  font: var(--m3-label-l);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  transition: color 0.2s;
+  padding: 6px 12px;
+  border-radius: var(--m3-shape-full);
+  transition: background-color var(--dur-short) var(--ease-soft), color var(--dur-short) var(--ease-soft);
 }
-.link-btn:hover { color: var(--text); }
+.link-btn:hover { color: var(--m3-primary); background: var(--m3-state-hover-primary); }
 .link-btn kbd:first-of-type { margin-left: 6px; }
 
 
@@ -1419,19 +1665,19 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 268px;
+  width: 280px;
   max-width: calc(100vw - 24px);
-  padding: 6px;
-  background: var(--v2-background-bg-layer-01);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--v2-elevation-floating);
+  padding: 12px;
+  background: var(--m3-surface-container);
+  border: none;
+  border-radius: var(--m3-shape-m);
+  box-shadow: var(--m3-elev-2);
   z-index: 100;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-6px) scale(0.98);
+  transform: translateY(-8px) scale(0.97);
   transform-origin: top right;
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+  transition: opacity var(--dur-short) var(--ease-emphasized), transform var(--dur-med) var(--ease-emphasized), visibility 0s linear var(--dur-short);
 }
 @media (max-width: 600px) {
   .theme-pop {
@@ -1447,11 +1693,8 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .theme-pop.open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 
 .theme-pop-title {
-  font-size: 11px;
-  font-weight: 530;
-  letter-spacing: 0.05px;
-  text-transform: uppercase;
-  color: var(--text-3);
+  font: var(--m3-title-s);
+  color: var(--m3-on-surface-variant);
   margin: 8px 8px 6px;
 }
 .theme-pop-title:first-child { margin-top: 4px; }
@@ -1477,31 +1720,30 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .theme-opt {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
-  height: 28px;
-  padding: 0 8px;
+  min-height: 48px;
+  padding: 0 12px;
   border: none;
-  border-radius: var(--radius-xs);
+  border-radius: var(--m3-shape-s);
   background: transparent;
-  color: var(--text);
+  color: var(--m3-on-surface);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 100%;
-  letter-spacing: -0.04px;
+  font: var(--m3-body-l);
+  letter-spacing: 0;
   text-align: left;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color var(--dur-short) var(--ease-soft);
 }
-.theme-opt:hover { background: var(--v2-overlay-simple-overlay-hover); }
-.theme-opt.active { background: var(--v2-overlay-simple-overlay-pressed); }
+.theme-opt:hover { background: var(--m3-state-hover); }
+.theme-opt.active { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
 .theme-opt.active::after {
   content: "✓";
   margin-left: auto;
-  font-size: 11px;
-  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--m3-on-secondary-container);
 }
 .theme-opt-name {
   flex: 1;
@@ -1511,11 +1753,11 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   white-space: nowrap;
 }
 .theme-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--m3-shape-full);
   flex-shrink: 0;
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--m3-outline-variant);
 }
 
 @media (max-width: 768px) {
@@ -1541,17 +1783,17 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   top: calc(100% + 10px);
   right: 0;
   width: 320px;
-  padding: 8px;
-  background: var(--v2-background-bg-layer-01);
+  padding: 12px;
+  background: var(--m3-surface-container);
   border: none;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--v2-elevation-floating);
+  border-radius: var(--m3-shape-m);
+  box-shadow: var(--m3-elev-2);
   z-index: 60;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-6px) scale(0.98);
+  transform: translateY(-8px) scale(0.97);
   transform-origin: top right;
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0s linear 0.12s;
+  transition: opacity var(--dur-short) var(--ease-emphasized), transform var(--dur-med) var(--ease-emphasized), visibility 0s linear var(--dur-short);
 }
 .account-pop.open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
 .account-pop-header {
@@ -1564,63 +1806,64 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 }
 .account-pop-title { font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
 
-.accounts-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; margin-bottom: 10px; }
+.accounts-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; margin-bottom: 10px; }
 .account-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line);
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--m3-shape-m);
+  border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--m3-on-surface);
   cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
+  transition: background-color var(--dur-short) var(--ease-soft);
   text-align: left;
   width: 100%;
 }
-.account-item:hover { background: var(--surface-2); border-color: var(--line-strong); }
-.account-item.active { border-color: var(--accent); background: var(--accent-soft); }
+.account-item:hover { background: var(--m3-state-hover); }
+.account-item.active { background: var(--m3-secondary-container); }
+.account-item.active .account-item-title { color: var(--m3-on-secondary-container); }
 .account-item-meta { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.account-item-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.account-item-sub { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
+.account-item-title { font: var(--m3-body-l); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-item-sub { font: var(--m3-body-s); color: var(--m3-on-surface-variant); font-family: var(--font-mono); }
 
 .plugin-account-banner {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
+  border: none;
+  border-radius: var(--m3-shape-l);
   margin-bottom: 14px;
-  font-size: 13px;
-  color: var(--text-2);
+  font: var(--m3-body-l);
 }
-.plugin-account-banner b { color: var(--text); }
-.plugin-account-banner .md-icon { color: var(--accent); }
+.plugin-account-banner b { color: inherit; }
+.plugin-account-banner .md-icon { color: inherit; }
 
 .plugin-acc-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  margin-top: 10px;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  background: var(--m3-surface-container-low);
+  border: none;
+  border-radius: var(--m3-shape-m);
+  margin-top: 12px;
 }
 
 /* Auth v2: QR на цьому ж телефоні / код / імпорт сесії */
 .auth-tabs { margin-bottom: 16px; }
 .auth-tabs button { flex: 1; white-space: nowrap; }
-.auth-lead { font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
 .auth-lead code, .form-help code, .hint-box code, .warn-box code { font-family: var(--font-mono, monospace); font-size: 12px; }
 .qr-box {
-  background: var(--surface);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-md);
-  padding: 14px;
+  background: var(--m3-surface-container);
+  border: 1px solid var(--m3-outline-variant);
+  border-radius: var(--m3-shape-l);
+  padding: 16px;
   min-height: 88px;
 }
 .qr-status { font-size: 13px; color: var(--text-2); }
@@ -1629,11 +1872,11 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   overflow-wrap: anywhere;
-  color: var(--accent);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  color: var(--m3-primary);
+  background: var(--m3-surface-container-highest);
+  border: none;
+  border-radius: var(--m3-shape-s);
+  padding: 10px 14px;
   user-select: all;
 }
 .qr-expires { margin-top: 8px; font-size: 12px; color: var(--text-3); }
@@ -1649,57 +1892,48 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 }
 .hint-box, .warn-box {
   margin-top: 14px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  font-size: 12px;
+  padding: 12px 16px;
+  border-radius: var(--m3-shape-m);
+  border: none;
+  font: var(--m3-body-s);
   line-height: 1.6;
 }
-.hint-box { background: var(--accent-soft); border: 1px solid var(--line); color: var(--text-2); }
-.warn-box { background: var(--warn-soft, rgba(255,170,0,.08)); border: 1px solid var(--line); color: var(--text-2); }
-.warn-box b, .hint-box b { color: var(--text); }
-.warn-box a, .hint-box a, .auth-lead a, .guide a { color: var(--accent); }
+.hint-box { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
+.warn-box { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--m3-on-surface); }
+.warn-box b, .hint-box b { color: inherit; }
+.warn-box a, .hint-box a, .auth-lead a, .guide a { color: var(--m3-primary); }
 .auth-status {
   margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--text-2);
+  padding: 12px 16px;
+  border-radius: var(--m3-shape-m);
+  font: var(--m3-body-m);
+  background: var(--m3-surface-container);
+  border: none;
+  color: var(--m3-on-surface-variant);
 }
-.auth-status.err { border-color: var(--err); color: var(--err); }
+.auth-status.err { background: var(--m3-error-container); color: var(--m3-on-error-container); }
 .guide {
   margin-top: 14px;
-  font-size: 12px;
-  color: var(--text-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
+  font: var(--m3-body-s);
+  color: var(--m3-on-surface-variant);
+  background: var(--m3-surface-container);
+  border: none;
+  border-radius: var(--m3-shape-m);
+  padding: 12px 16px;
 }
-.guide summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.guide summary { cursor: pointer; font: var(--m3-title-s); color: var(--m3-on-surface); }
 .guide ol { margin: 10px 0 0 18px; display: grid; gap: 8px; }
 .guide-steps { margin: 0 0 0 18px; display: grid; gap: 8px; font-size: 12px; color: var(--text-2); line-height: 1.6; }
 .guide-steps a { color: var(--accent); }
 .code-block {
   margin-top: 8px;
-  padding: 10px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  background: var(--m3-surface-container-highest);
+  border: none;
+  border-radius: var(--m3-shape-s);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: all;
 }
-
-.btn-icon {
-  padding: 6px;
-  min-width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-}
-.btn-icon .md-icon { margin: 0; }
