@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"runtime"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tui"
 )
@@ -394,13 +396,58 @@ func (v *logsView) Draw(f *tui.Frame) {
 		meta += " · " + updated.Format("15:04:05")
 	}
 	f.FillLine(0, h-2, w, " "+tui.Truncate(meta, w-2), tui.Style{Fg: tui.ColorDim})
-	f.FillLine(0, h-1, w, " ↑↓ PgUp/PgDn — прокрутка · Home — початок · Esc — назад",
+	f.FillLine(0, h-1, w, " ↑↓ PgUp/PgDn — прокрутка · y — копіювати журнал · Esc — назад",
 		tui.Style{Fg: tui.ColorFaint})
+}
+
+// yank copies the whole loaded journal (up to 500 tail lines) to the
+// clipboard: termux-clipboard-set when present, otherwise an OSC 52
+// sequence straight to the tty (understood by most terminal emulators).
+func (v *logsView) yank() {
+	v.mu.Lock()
+	text := strings.Join(v.lines, "\n")
+	v.mu.Unlock()
+	if strings.TrimSpace(text) == "" {
+		v.c.toast("журнал порожній — нічого копіювати", true)
+		return
+	}
+	if path, err := sysx.LookPath("termux-clipboard-set"); err == nil {
+		cmd := sysx.Command(path)
+		cmd.Stdin = strings.NewReader(text)
+		if err := cmd.Run(); err == nil {
+			v.c.toast("журнал скопійовано в буфер обміну", false)
+			return
+		}
+	}
+	if err := osc52Copy(text); err != nil {
+		v.c.toast("буфер недоступний: "+err.Error(), true)
+		return
+	}
+	v.c.toast("журнал скопійовано в буфер обміну", false)
+}
+
+// osc52Copy asks the terminal emulator to take text into its clipboard.
+func osc52Copy(text string) error {
+	// Cap the payload: some emulators truncate around 100 KiB.
+	if len(text) > 200<<10 {
+		text = text[len(text)-(200<<10):]
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer tty.Close()
+	_, err = fmt.Fprintf(tty, "\x1b]52;c;%s\x07", base64.StdEncoding.EncodeToString([]byte(text)))
+	return err
 }
 
 func (v *logsView) OnKey(k tui.Key) {
 	if k.Type == tui.KeyCtrlC || k.Type == tui.KeyEsc {
 		v.c.app.SetView(v.back)
+		return
+	}
+	if k.Is('y') || k.Is('Y') {
+		v.yank()
 		return
 	}
 	v.mu.Lock()
