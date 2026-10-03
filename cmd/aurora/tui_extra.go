@@ -15,6 +15,25 @@ import (
 // read from the controller snapshot; the controller fetches each endpoint
 // only while its view is on screen (see refreshExtra).
 
+// noticeBox wraps a controller notice (errors first of all) for narrow
+// screens: at most two lines instead of a clipped tail.
+func noticeBox(s snap, w int) ([]string, tui.Style) {
+	if !s.nOn {
+		return nil, tui.Style{}
+	}
+	st := tui.Style{Fg: tui.ColorGood}
+	prefix := " ✓ "
+	if s.nErr {
+		prefix = " ✖ "
+		st = tui.Style{Fg: tui.ColorBad}
+	}
+	lines := tui.WrapLines(prefix+s.notice, w-2)
+	if len(lines) > 2 {
+		lines = lines[:2]
+	}
+	return lines, st
+}
+
 // ---- accounts ----
 
 type accountsView struct {
@@ -73,6 +92,10 @@ func (v *accountsView) Draw(f *tui.Frame) {
 		tui.Style{Fg: tui.ColorSelectF, Bg: tui.ColorSelect, Bold: true})
 
 	body := h - 4
+	nl, nst := noticeBox(s, w-2)
+	if len(nl) > 0 {
+		body -= len(nl) - 1
+	}
 	if body < 3 {
 		body = 3
 	}
@@ -84,17 +107,27 @@ func (v *accountsView) Draw(f *tui.Frame) {
 		}
 		v.list.Draw(f, 2, 2, w-4, body, true)
 	case s.accE != "":
-		f.FillLine(2, 3, w-4, " ✖ "+tui.Truncate(s.accE, w-6), tui.Style{Fg: tui.ColorBad})
+		for i, ln := range tui.WrapLines(" ✖ "+s.accE, w-4) {
+			if i >= 2 || 3+i >= h-1 {
+				break
+			}
+			f.FillLine(2, 3+i, w-4, ln, tui.Style{Fg: tui.ColorBad})
+		}
 	default:
 		f.FillLine(2, 3, w-4, " акаунтів немає — виконайте «Вхід у Telegram»",
 			tui.Style{Fg: tui.ColorDim})
 	}
 
-	if s.busy != "" {
+	switch {
+	case s.busy != "":
 		f.FillLine(2, h-3, w-4, " "+tui.Spinner(s.spins)+" "+s.busy,
 			tui.Style{Fg: tui.ColorAccent, Bold: true})
+	case len(nl) > 0:
+		for i, ln := range nl {
+			f.FillLine(0, h-3-(len(nl)-1)+i, w, " "+ln, nst)
+		}
 	}
-	f.FillLine(0, h-2, w, " ↑↓ — вибір · Enter — зробити активним · r — оновити · Esc — назад",
+	f.FillLine(0, h-2, w, " ↑↓ — вибір · Enter — зробити активним · ←→ — гортання · r — оновити · Esc — назад",
 		tui.Style{Fg: tui.ColorDim})
 	f.FillLine(0, h-1, w, " "+tui.Truncate(s.url, w-2), tui.Style{Fg: tui.ColorFaint})
 }
@@ -230,8 +263,12 @@ func (v *commandsView) Draw(f *tui.Frame) {
 	if s.busy != "" {
 		f.FillLine(0, h-2, w, " "+tui.Spinner(s.spins)+" "+s.busy,
 			tui.Style{Fg: tui.ColorAccent, Bold: true})
+	} else if nl, nst := noticeBox(s, w-2); len(nl) > 0 {
+		for i, ln := range nl {
+			f.FillLine(0, h-2-(len(nl)-1)+i, w, " "+ln, nst)
+		}
 	} else {
-		f.FillLine(0, h-2, w, " ↑↓ — команда · Tab — поле аргументів · Enter — виконати · Esc — назад",
+		f.FillLine(0, h-2, w, " ↑↓ — команда · Tab — поле аргументів · Enter — виконати · ←→ — гортання · Esc — назад",
 			tui.Style{Fg: tui.ColorDim})
 	}
 }
@@ -355,6 +392,10 @@ func (v *sessionsView) Draw(f *tui.Frame) {
 		tui.Style{Fg: tui.ColorSelectF, Bg: tui.ColorSelect, Bold: true})
 
 	body := h - 5
+	nl, nst := noticeBox(s, w-2)
+	if len(nl) > 0 {
+		body -= len(nl) - 1
+	}
 	if body < 3 {
 		body = 3
 	}
@@ -366,16 +407,26 @@ func (v *sessionsView) Draw(f *tui.Frame) {
 		}
 		v.list.Draw(f, 2, 2, w-4, body, true)
 	case s.sesE != "":
-		f.FillLine(2, 3, w-4, " ✖ "+tui.Truncate(s.sesE, w-6), tui.Style{Fg: tui.ColorBad})
+		for i, ln := range tui.WrapLines(" ✖ "+s.sesE, w-4) {
+			if i >= 2 || 3+i >= h-1 {
+				break
+			}
+			f.FillLine(2, 3+i, w-4, ln, tui.Style{Fg: tui.ColorBad})
+		}
 	default:
 		f.FillLine(2, 3, w-4, " сесій немає", tui.Style{Fg: tui.ColorDim})
 	}
 
-	if s.busy != "" {
+	switch {
+	case s.busy != "":
 		f.FillLine(2, h-3, w-4, " "+tui.Spinner(s.spins)+" "+s.busy,
 			tui.Style{Fg: tui.ColorAccent, Bold: true})
+	case len(nl) > 0:
+		for i, ln := range nl {
+			f.FillLine(0, h-3-(len(nl)-1)+i, w, " "+ln, nst)
+		}
 	}
-	f.FillLine(0, h-2, w, " ↑↓ — вибір · Enter — завершити сесію · r — оновити · Esc — назад",
+	f.FillLine(0, h-2, w, " ↑↓ — вибір · Enter — завершити сесію · ←→ — гортання · r — оновити · Esc — назад",
 		tui.Style{Fg: tui.ColorDim})
 	f.FillLine(0, h-1, w, " "+tui.Truncate(s.url, w-2), tui.Style{Fg: tui.ColorFaint})
 }
@@ -465,11 +516,27 @@ func (v *profileView) Draw(f *tui.Frame) {
 			break
 		}
 		f.FillLine(2, y, 16, tui.Pad(r[0], 14), tui.Style{Fg: tui.ColorDim})
-		f.TextLimit(18, y, w-20, tui.Truncate(r[1], w-20), tui.Style{Fg: tui.ColorText})
-		y++
+		// Values (especially bio) wrap instead of clipping on narrow screens.
+		lns := tui.WrapLines(r[1], w-20)
+		if len(lns) > 3 {
+			lns = lns[:3]
+		}
+		for i, ln := range lns {
+			if y+i >= h-3 {
+				break
+			}
+			f.TextLimit(18, y+i, w-20, ln, tui.Style{Fg: tui.ColorText})
+		}
+		y += len(lns)
 	}
-	f.FillLine(0, h-2, w, " r — оновити · Esc — назад (редагування — у веб-панелі)",
-		tui.Style{Fg: tui.ColorDim})
+	if nl, nst := noticeBox(s, w-2); len(nl) > 0 {
+		for i, ln := range nl {
+			f.FillLine(2, h-2-(len(nl)-1)+i, w-4, ln, nst)
+		}
+	} else {
+		f.FillLine(0, h-2, w, " r — оновити · Esc — назад (редагування — у веб-панелі)",
+			tui.Style{Fg: tui.ColorDim})
+	}
 	f.FillLine(0, h-1, w, " "+tui.Truncate(s.url, w-2), tui.Style{Fg: tui.ColorFaint})
 }
 

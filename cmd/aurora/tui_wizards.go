@@ -209,13 +209,21 @@ func (v *loginView) Draw(f *tui.Frame) {
 		line = " " + tui.Spinner(spins) + " " + msg
 		lst = tui.Style{Fg: tui.ColorAccent, Bold: true}
 	case errText != "":
-		line = " ✖ " + tui.Truncate(errText, w-4)
+		line = " ✖ " + errText
 		lst = tui.Style{Fg: tui.ColorBad}
 	case msg != "":
-		line = " " + tui.Truncate(msg, w-4)
+		line = " " + msg
 	}
-	if y < h-3 {
-		f.FillLine(2, h-3, w-4, line, lst)
+	// Status (errors first of all) wraps over two lines: on a phone the
+	// clipped tail usually holds the actual reason.
+	if y < h-3 && line != "" {
+		nlines := tui.WrapLines(line, w-4)
+		if len(nlines) > 2 {
+			nlines = nlines[:2]
+		}
+		for i, ln := range nlines {
+			f.FillLine(2, h-3-(len(nlines)-1)+i, w-4, ln, lst)
+		}
 	}
 
 	hint := " Enter — підтвердити · Esc — назад "
@@ -670,16 +678,23 @@ func (v *setupView) Draw(f *tui.Frame) {
 	}
 
 	y++
+	// Status floats above the footer and wraps: clipped errors hide the reason.
 	switch {
 	case errText != "":
-		f.FillLine(2, y, w-4, " ✖ "+tui.Truncate(errText, w-6), tui.Style{Fg: tui.ColorBad})
+		nlines := tui.WrapLines(" ✖ "+errText, w-4)
+		if len(nlines) > 2 {
+			nlines = nlines[:2]
+		}
+		for i, ln := range nlines {
+			f.FillLine(2, h-3-(len(nlines)-1)+i, w-4, ln, tui.Style{Fg: tui.ColorBad})
+		}
 	case msg != "":
-		f.FillLine(2, y, w-4, " ✓ "+tui.Truncate(msg, w-6), tui.Style{Fg: tui.ColorGood})
+		f.FillLine(2, h-3, w-4, " ✓ "+tui.Truncate(msg, w-6), tui.Style{Fg: tui.ColorGood})
 	case saving:
-		f.FillLine(2, y, w-4, " "+tui.Spinner(spins)+" зберігаю…", tui.Style{Fg: tui.ColorAccent})
+		f.FillLine(2, h-3, w-4, " "+tui.Spinner(spins)+" зберігаю…", tui.Style{Fg: tui.ColorAccent})
 	}
 
-	if y < h-4 {
+	if y < h-4 && errText == "" {
 		f.FillLine(2, h-4, w-4, " Порожні поля → повернути стандартні ключі", tui.Style{Fg: tui.ColorFaint})
 	}
 	f.FillLine(0, h-2, w, " Tab — наступне поле · Enter — зберегти · Esc — назад", tui.Style{Fg: tui.ColorDim})

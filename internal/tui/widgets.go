@@ -1,5 +1,7 @@
 package tui
 
+import "strings"
+
 // Width returns the display width of s in terminal cells.
 func Width(s string) int { return stringWidth(s) }
 
@@ -8,6 +10,98 @@ func Truncate(s string, w int) string { return trunc(s, w) }
 
 // Pad appends spaces so that s occupies exactly w cells.
 func Pad(s string, w int) string { return pad(s, w) }
+
+// SliceCells returns the window of s starting at cell offset start,
+// at most width cells wide. Used to scroll long rows horizontally on
+// narrow phone screens.
+func SliceCells(s string, start, width int) string {
+	if width <= 0 || start < 0 {
+		if width <= 0 {
+			return ""
+		}
+		start = 0
+	}
+	var b strings.Builder
+	col, used := 0, 0
+	for _, r := range s {
+		w := runeWidth(r)
+		if col+w <= start {
+			col += w
+			continue
+		}
+		if col < start {
+			// A wide rune straddling the window edge: skip it whole
+			// rather than drawing half a cell.
+			col += w
+			continue
+		}
+		if used+w > width {
+			break
+		}
+		b.WriteRune(r)
+		used += w
+		col += w
+	}
+	return b.String()
+}
+
+// WrapLines splits s into lines of at most width cells, preferring word
+// boundaries and honouring embedded newlines. Overlong words are hard-cut.
+func WrapLines(s string, width int) []string {
+	if width <= 0 {
+		return []string{""}
+	}
+	var lines []string
+	var cur strings.Builder
+	curW := 0
+	flush := func() {
+		lines = append(lines, strings.TrimRight(cur.String(), " "))
+		cur.Reset()
+		curW = 0
+	}
+	word := []rune{}
+	wordW := 0
+	flushWord := func() {
+		if wordW == 0 {
+			return
+		}
+		// A pending separator space is already counted in curW.
+		if curW > 0 && curW+wordW > width {
+			flush()
+		}
+		for _, r := range word {
+			w := runeWidth(r)
+			if curW+w > width {
+				flush()
+			}
+			cur.WriteRune(r)
+			curW += w
+		}
+		word = word[:0]
+		wordW = 0
+	}
+	for _, r := range s {
+		switch {
+		case r == '\n':
+			flushWord()
+			flush()
+		case r == ' ' || r == '\t':
+			flushWord()
+			if curW+1 > width {
+				flush()
+			} else if curW > 0 || cur.String() != "" {
+				cur.WriteByte(' ')
+				curW++
+			}
+		default:
+			word = append(word, r)
+			wordW += runeWidth(r)
+		}
+	}
+	flushWord()
+	flush()
+	return lines
+}
 
 // pad appends spaces so s occupies exactly width cells.
 func pad(s string, width int) string {
@@ -58,11 +152,18 @@ type ListItem struct {
 	ID string
 }
 
-// List is a scrollable selection list.
+// List is a scrollable selection list. Sel moves vertically; X scrolls
+// the selected row horizontally (←/→) so long titles and descriptions
+// stay readable on narrow phone screens.
 type List struct {
 	Items  []ListItem
 	Sel    int
 	Offset int
+	X      int
+	// lastW remembers the text width of the last drawn row, so Key
+	// knows how far the selected row may scroll. Zero before the
+	// first Draw — then scrolling stays off (safe default).
+	lastW int
 }
 
 // Select moves the cursor by delta rows.
@@ -78,16 +179,42 @@ func (l *List) Select(delta int) {
 	if l.Sel >= len(l.Items) {
 		l.Sel = len(l.Items) - 1
 	}
+	l.X = 0
 }
 
 // First jumps to the start of the list.
-func (l *List) First() { l.Sel = 0 }
+func (l *List) First() { l.Sel = 0; l.X = 0 }
 
 // Last jumps to the end of the list.
 func (l *List) Last() {
 	if len(l.Items) > 0 {
 		l.Sel = len(l.Items) - 1
 	}
+	l.X = 0
+}
+
+// fullText is everything the row can show when scrolled.
+func (l *List) fullText(i int) string {
+	if i < 0 || i >= len(l.Items) {
+		return ""
+	}
+	it := l.Items[i]
+	if it.Desc == "" {
+		return it.Title
+	}
+	return it.Title + " · " + it.Desc
+}
+
+// maxX is how far the selected row can scroll: the overflow beyond
+// the last drawn width. Zero when the row fits or nothing was drawn yet.
+func (l *List) maxX() int {
+	if l.lastW <= 0 {
+		return 0
+	}
+	if fw := stringWidth(l.fullText(l.Sel)); fw > l.lastW {
+		return fw - l.lastW
+	}
+	return 0
 }
 
 // Key handles the navigation keys. It reports whether the key was used.
@@ -105,6 +232,23 @@ func (l *List) Key(k Key) bool {
 		l.First()
 	case KeyEnd:
 		l.Last()
+	case KeyLeft:
+		if l.maxX() == 0 || l.X <= 0 {
+			return false
+		}
+		l.X -= 4
+		if l.X < 0 {
+			l.X = 0
+		}
+	case KeyRight:
+		m := l.maxX()
+		if m == 0 || l.X >= m {
+			return false
+		}
+		l.X += 4
+		if l.X > m {
+			l.X = m
+		}
 	default:
 		return false
 	}
@@ -166,14 +310,46 @@ func (l *List) Draw(f *Frame, x, y, w, h int, focused bool) {
 			titleW = w - 2
 			badgeW = 0
 		}
-		title := trunc(it.Title, titleW)
-		f.TextLimit(col, y+row, titleW, title, rowStyle)
-		if it.Desc != "" && !selected {
-			// A faint description trails the title when there is room.
-			rest := titleW - Width(title) - 1
-			if rest > 6 {
-				f.TextLimit(col+Width(title)+1, y+row, rest, "· "+trunc(it.Desc, rest-2),
-					Style{Fg: ColorDim, Bg: rowStyle.Bg})
+		full := it.Title
+		if it.Desc != "" {
+			full += " · " + it.Desc
+		}
+		l.lastW = titleW
+		if m := l.maxX(); l.X > m {
+			l.X = m
+		}
+		if l.X < 0 {
+			l.X = 0
+		}
+		if stringWidth(full) <= titleW && l.X == 0 {
+			title := trunc(it.Title, titleW)
+			f.TextLimit(col, y+row, titleW, title, rowStyle)
+			if it.Desc != "" && !selected {
+				// A faint description trails the title when there is room.
+				rest := titleW - Width(title) - 1
+				if rest > 6 {
+					f.TextLimit(col+Width(title)+1, y+row, rest, "· "+trunc(it.Desc, rest-2),
+						Style{Fg: ColorDim, Bg: rowStyle.Bg})
+				}
+			}
+		} else {
+			// Overflow: a scrollable window over "title · desc" with
+			// edge markers, driven by ←/→ (see List.Key).
+			fw := stringWidth(full)
+			cx, avail := col, titleW
+			if l.X > 0 {
+				f.TextLimit(cx, y+row, 1, "◀", Style{Fg: ColorDim, Bg: rowStyle.Bg})
+				cx++
+				avail--
+			}
+			right := 0
+			if l.X+avail < fw {
+				right = 1
+			}
+			win := SliceCells(full, l.X, avail-right)
+			f.TextLimit(cx, y+row, avail-right, win, rowStyle)
+			if right > 0 {
+				f.TextLimit(cx+avail-right, y+row, 1, "▶", Style{Fg: ColorDim, Bg: rowStyle.Bg})
 			}
 		}
 		if badgeW > 0 {

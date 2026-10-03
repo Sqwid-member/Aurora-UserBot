@@ -105,8 +105,15 @@ func (v *qrView) Draw(f *tui.Frame) {
 
 	switch {
 	case errText != "":
-		f.Center(bx, bw, y, tui.Truncate(errText, bw), tui.Style{Fg: tui.ColorBad})
-		y += 2
+		nlines := tui.WrapLines(errText, bw)
+		if len(nlines) > 3 {
+			nlines = nlines[:3]
+		}
+		for _, ln := range nlines {
+			f.Center(bx, bw, y, ln, tui.Style{Fg: tui.ColorBad})
+			y++
+		}
+		y++
 	case s.auth != nil && s.auth.SignedIn:
 		f.Center(bx, bw, y, "✓ Сесію авторизовано", tui.Style{Fg: tui.ColorGood, Bold: true})
 		y += 2

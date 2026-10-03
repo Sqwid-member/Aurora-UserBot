@@ -108,7 +108,19 @@ func (v *pluginsView) Draw(f *tui.Frame) {
 	}
 	list := v.syncList(items)
 
-	body := h - 6
+	// A notice (usually an error) wraps over up to two lines; the list
+	// above shrinks so no row hides underneath it.
+	noteLines := []string{}
+	if notice != "" {
+		noteLines = tui.WrapLines(notice, w-4)
+		if len(noteLines) > 2 {
+			noteLines = noteLines[:2]
+		}
+	}
+	body := h - 6 - (len(noteLines) - 1)
+	if len(noteLines) == 0 {
+		body = h - 6
+	}
 	if body < 3 {
 		body = 3
 	}
@@ -125,12 +137,14 @@ func (v *pluginsView) Draw(f *tui.Frame) {
 	y := h - 4
 	if installing {
 		input.Draw(f, 2, y, w-4, true)
-	} else if notice != "" {
+	} else if len(noteLines) > 0 {
 		col := tui.ColorGood
 		if noticeE {
 			col = tui.ColorBad
 		}
-		f.FillLine(2, y, w-4, tui.Truncate(notice, w-4), tui.Style{Fg: col})
+		for i, ln := range noteLines {
+			f.FillLine(2, y-(len(noteLines)-1)+i, w-4, ln, tui.Style{Fg: col})
+		}
 	} else {
 		summary := fmt.Sprintf("активних: %d / %d", running, len(items))
 		if s.busy != "" {
@@ -143,7 +157,7 @@ func (v *pluginsView) Draw(f *tui.Frame) {
 		f.FillLine(0, h-2, w, " Enter — встановити · Esc — скасувати", tui.Style{Fg: tui.ColorDim})
 	} else {
 		f.FillLine(0, h-2, w,
-			" ↑↓ — вибір · Enter — увімкнути/вимкнути · i — встановити · r — оновити · Esc — назад",
+			" ↑↓ — вибір · Enter — увімкнути/вимкнути · ←→ — гортання опису · i — встановити · r — оновити · Esc — назад",
 			tui.Style{Fg: tui.ColorDim})
 	}
 	f.FillLine(0, h-1, w, " "+tui.Truncate(s.url, w-2), tui.Style{Fg: tui.ColorFaint})
@@ -334,7 +348,12 @@ func (v *logsView) Draw(f *tui.Frame) {
 	}
 	switch {
 	case errText != "":
-		f.FillLine(2, 2, w-4, " ✖ "+tui.Truncate(errText, w-6), tui.Style{Fg: tui.ColorBad})
+		for i, ln := range tui.WrapLines(" ✖ "+errText, w-4) {
+			if 2+i >= 1+body {
+				break
+			}
+			f.FillLine(2, 2+i, w-4, ln, tui.Style{Fg: tui.ColorBad})
+		}
 	case len(lines) == 0:
 		f.FillLine(2, 2, w-4, " журнал порожній — запустіть юзербота (клавіша 3 у меню)",
 			tui.Style{Fg: tui.ColorDim})

@@ -478,20 +478,36 @@ func (v *mainView) Draw(f *tui.Frame) {
 
 	// footer
 	hint := " ↑↓ навігація · Enter — обрати · 1-9, 0, w, i, u, a, c, s, p — швидкий вибір · r — оновити · q — вихід"
+	if s.nOn {
+		// Notices (errors first of all) wrap over two lines instead of
+		// being cut: on a phone the tail often holds the actual reason.
+		prefix := " ✓ "
+		lineStyle := tui.Style{Fg: tui.ColorGood}
+		if s.nErr {
+			prefix = " ✖ "
+			lineStyle = tui.Style{Fg: tui.ColorBad}
+		}
+		for i, ln := range tui.WrapLines(prefix+tui.Truncate(s.notice, 512), w-2) {
+			if i >= 2 {
+				break
+			}
+			f.FillLine(0, h-2+i, w, " "+ln, lineStyle)
+		}
+		if s.busy != "" {
+			f.FillLine(0, h-1, w, " "+tui.Spinner(s.spins)+" "+s.busy,
+				tui.Style{Fg: tui.ColorAccent, Bold: true})
+		}
+		return
+	}
 	f.FillLine(0, h-2, w, tui.Truncate(hint, w), tui.Style{Fg: tui.ColorDim})
 
 	line := " " + tui.Truncate("Enter — обрати дію", w-2)
 	lineStyle := tui.Style{Fg: tui.ColorDim}
-	switch {
-	case s.busy != "":
+	// Notices are rendered wrapped above (early return); here only the
+	// busy indicator may override the default line.
+	if s.busy != "" {
 		line = " " + tui.Spinner(s.spins) + " " + s.busy
 		lineStyle = tui.Style{Fg: tui.ColorAccent, Bold: true}
-	case s.nOn && s.nErr:
-		line = " ✖ " + tui.Truncate(s.notice, w-4)
-		lineStyle = tui.Style{Fg: tui.ColorBad}
-	case s.nOn:
-		line = " ✓ " + tui.Truncate(s.notice, w-4)
-		lineStyle = tui.Style{Fg: tui.ColorGood}
 	}
 	f.FillLine(0, h-1, w, line, lineStyle)
 }
@@ -700,7 +716,13 @@ func (v *confirmView) Draw(f *tui.Frame) {
 	}
 	f.Box(bx, by, bw, bh, tui.Style{Fg: tui.ColorWarn}, "")
 	f.Center(bx, bw, by+1, tui.Truncate(v.title, bw-4), tui.Style{Fg: tui.ColorText, Bold: true})
-	f.Center(bx, bw, by+2, tui.Truncate(v.hint, bw-4), tui.Style{Fg: tui.ColorDim})
+	nlines := tui.WrapLines(v.hint, bw-4)
+	if len(nlines) > 2 {
+		nlines = nlines[:2]
+	}
+	for i, ln := range nlines {
+		f.Center(bx, bw, by+2+i, ln, tui.Style{Fg: tui.ColorDim})
+	}
 	f.Center(bx, bw, by+4, "y — так      n / Esc — ні", tui.Style{Fg: tui.ColorAccent, Bold: true})
 	f.FillLine(0, h-1, w, " Esc — скасувати ", tui.Style{Fg: tui.ColorDim})
 }
