@@ -333,7 +333,12 @@
   }
 
   // ---------- Sliders with CSS Variables ----------
-  function setupSlider(input, chip, suffix = ' MB') {
+  // RAM detents: round values users actually pick (powers of two plus the
+  // mid-steps between them). Snapping is deliberately soft — only within
+  // a few units — so the slider never feels like it fights the finger.
+  const RAM_DETENTS = [32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024];
+  const DETENT_RADIUS = 4;
+  function setupSlider(input, chip, suffix = ' MB', detents = null) {
     if (!input || !chip) return;
     // №11: loadSettings() викликається при кожному відкритті вкладки —
     // без guard слухачі input накопичуються і чіп оновлюється N разів.
@@ -344,7 +349,16 @@
     }
     input.dataset.sliderBound = '1';
     const update = () => {
-      const val = parseFloat(input.value);
+      let val = parseFloat(input.value);
+      if (detents) {
+        for (const d of detents) {
+          if (Math.abs(val - d) <= DETENT_RADIUS) {
+            val = d;
+            input.value = String(d);
+            break;
+          }
+        }
+      }
       const min = parseFloat(input.min) || 0;
       const max = parseFloat(input.max) || 100;
       const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
@@ -356,8 +370,8 @@
   }
 
   function initSliders() {
-    setupSlider($('#quick-tune-base'), $('#quick-tune-base-chip'));
-    setupSlider($('#setting-base-input'), $('#setting-base-chip'));
+    setupSlider($('#quick-tune-base'), $('#quick-tune-base-chip'), ' MB', RAM_DETENTS);
+    setupSlider($('#setting-base-input'), $('#setting-base-chip'), ' MB', RAM_DETENTS);
     // Burst sliders are intentionally not wired: backend has only mem_limit_mb.
   }
 
