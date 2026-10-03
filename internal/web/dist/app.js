@@ -36,25 +36,38 @@
     }
   } catch (e) {}
 
+  // M3 loading: global linear bar with refcount — every API call pulses it.
+  let loadingDepth = 0;
+  function loading(on) {
+    loadingDepth = Math.max(0, loadingDepth + (on ? 1 : -1));
+    const bar = $('#m3-loading');
+    if (bar) bar.hidden = loadingDepth === 0;
+  }
+
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
     const tok = localStorage.getItem("aurora_token") || window.__AURORA_TOKEN__;
     if (tok && !headers['Authorization']) headers['Authorization'] = "Bearer " + tok;
-    const res = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
-    if (res.status === 401) {
-      const fallbackTok = window.__AURORA_TOKEN__;
-      if (fallbackTok && tok !== fallbackTok) {
-        localStorage.setItem("aurora_token", fallbackTok);
-        location.reload();
+    loading(true);
+    try {
+      const res = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+      if (res.status === 401) {
+        const fallbackTok = window.__AURORA_TOKEN__;
+        if (fallbackTok && tok !== fallbackTok) {
+          localStorage.setItem("aurora_token", fallbackTok);
+          location.reload();
+        }
+        throw new Error('unauthorized');
       }
-      throw new Error('unauthorized');
+      const text = await res.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    } finally {
+      loading(false);
     }
-    const text = await res.text();
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-    return data;
   }
 
   // ---------- Utilities ----------
@@ -340,11 +353,36 @@
   const DETENT_RADIUS = 4;
   function setupSlider(input, chip, suffix = ' MB', detents = null) {
     if (!input || !chip) return;
+    const syncStops = (val) => {
+      // M3 stop indicators: точки детентів; активна зона — on-primary.
+      const box = document.getElementById(input.id + '-stops');
+      if (!box) return;
+      const min = parseFloat(input.min) || 0;
+      const max = parseFloat(input.max) || 100;
+      if (!box.children.length && detents) {
+        for (const d of detents) {
+          if (d < min || d > max) continue;
+          const dot = document.createElement('i');
+          dot.dataset.v = String(d);
+          dot.style.left = `${((d - min) / (max - min)) * 100}%`;
+          box.appendChild(dot);
+        }
+      }
+      for (const dot of box.children) {
+        dot.classList.toggle('on', parseFloat(dot.dataset.v) <= val);
+      }
+    };
+    const syncBubble = (val) => {
+      const bubble = document.getElementById(input.id + '-bubble');
+      if (bubble) bubble.textContent = `${val}${suffix}`;
+    };
     // №11: loadSettings() викликається при кожному відкритті вкладки —
     // без guard слухачі input накопичуються і чіп оновлюється N разів.
     if (input.dataset.sliderBound === '1') {
       const val = parseFloat(input.value);
       chip.textContent = `${val}${suffix}`;
+      syncStops(val);
+      syncBubble(val);
       return;
     }
     input.dataset.sliderBound = '1';
@@ -364,6 +402,8 @@
       const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
       input.style.setProperty('--p', `${pct}%`);
       chip.textContent = `${val}${suffix}`;
+      syncStops(val);
+      syncBubble(val);
     };
     input.addEventListener('input', update);
     update();
@@ -492,7 +532,9 @@
     if (!name) { toast('Команда', 'Оберіть команду зі списку', 'warn'); return; }
 
     const out = $('#cmd-result');
+    const spin = $('#cmd-spin');
     out.textContent = 'Виконання команди...';
+    if (spin) spin.hidden = false;
     try {
       const res = await api('/api/command', {
         method: 'POST',
@@ -503,6 +545,8 @@
     } catch (err) {
       out.textContent = `Помилка: ${err.message}`;
       toast('Помилка', err.message, 'error');
+    } finally {
+      if (spin) spin.hidden = true;
     }
   });
 
@@ -1955,6 +1999,8 @@
   let accQRTimer = null;
   function accStopQR() {
     if (accQRTimer) { clearInterval(accQRTimer); accQRTimer = null; }
+    const spin = $('#acc-qr-spin');
+    if (spin) spin.hidden = true;
   }
   function qrImgURL(path) {
     const tok = localStorage.getItem("aurora_token") || window.__AURORA_TOKEN__ || '';
@@ -2012,7 +2058,9 @@
   }
   $('#btn-add-acc-qr-start')?.addEventListener('click', async () => {
     const btn = $('#btn-add-acc-qr-start'), status = $('#add-acc-qr-status');
+    const spin = $('#acc-qr-spin');
     if (btn) { btn.disabled = true; btn.textContent = 'Запитуємо…'; }
+    if (spin) spin.hidden = false;
     try {
       const id = await ensurePendingAcc('');
       await api(accPath(id, '/auth/qr'), { method: 'POST' });
@@ -2024,6 +2072,7 @@
     } catch (err) {
       if (status) status.textContent = 'Помилка: ' + (err.message || err);
       toast('QR-вхід', err.message || 'Не вдалося', 'error');
+      accStopQR();
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Отримати посилання для входу'; }
     }

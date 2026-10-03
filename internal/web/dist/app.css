@@ -37,42 +37,45 @@
   /* Підняття та фокус (токени opencode) */
   --focus-ring: var(--v2-border-border-focus);
 
-  /* === M3 Expressive: колірні ролі (поверх v2-рушія, адаптуються до теми) === */
-  --m3-primary: var(--accent);
-  --m3-on-primary: var(--accent-ink);
-  --m3-primary-container: var(--accent-soft);
-  --m3-on-primary-container: var(--accent);
-  --m3-secondary: color-mix(in srgb, var(--accent) 68%, var(--text) 32%);
-  --m3-on-secondary: var(--accent-ink);
-  --m3-secondary-container: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
-  --m3-on-secondary-container: var(--accent);
-  --m3-tertiary: var(--ok);
-  --m3-on-tertiary: var(--bg);
-  --m3-tertiary-container: var(--ok-soft);
-  --m3-on-tertiary-container: var(--ok);
-  --m3-error: var(--err);
-  --m3-on-error: var(--bg);
-  --m3-error-container: var(--err-soft);
-  --m3-on-error-container: var(--err);
-  --m3-surface: var(--surface);
-  --m3-surface-dim: var(--bg);
-  --m3-surface-bright: var(--surface-2);
-  --m3-surface-container-lowest: var(--bg);
-  --m3-surface-container-low: var(--surface);
-  --m3-surface-container: var(--surface-2);
-  --m3-surface-container-high: var(--surface-2);
-  --m3-surface-container-highest: var(--surface-3);
-  --m3-on-surface: var(--text);
-  --m3-on-surface-variant: var(--text-2);
-  --m3-surface-variant: var(--surface-2);
-  --m3-outline: var(--line-strong);
-  --m3-outline-variant: var(--line);
-  --m3-inverse-surface: var(--v2-background-bg-inverse);
-  --m3-inverse-on-surface: var(--v2-text-text-inverse);
-  --m3-inverse-primary: var(--v2-text-text-accent-hover, var(--accent));
-  --m3-scrim: var(--overlay);
-  --m3-shadow: #000;
-  --m3-surface-tint: var(--accent-bg);
+  /* === M3: справжні ролі динамічної схеми (генерує m3-scheme.js з сіда
+     теми; далі — статичний fallback з theme.css, останнім — старий акцент) === */
+  --m3-primary: var(--md-sys-color-primary, var(--accent));
+  --m3-on-primary: var(--md-sys-color-on-primary, var(--accent-ink));
+  --m3-primary-container: var(--md-sys-color-primary-container, var(--accent-soft));
+  --m3-on-primary-container: var(--md-sys-color-on-primary-container, var(--accent));
+  --m3-secondary: var(--md-sys-color-secondary, var(--m3-secondary-fb));
+  --m3-on-secondary: var(--md-sys-color-on-secondary, var(--accent-ink));
+  --m3-secondary-container: var(--md-sys-color-secondary-container, var(--m3-secondary-container-fb));
+  --m3-on-secondary-container: var(--md-sys-color-on-secondary-container, var(--accent));
+  --m3-tertiary: var(--md-sys-color-tertiary, var(--ok));
+  --m3-on-tertiary: var(--md-sys-color-on-tertiary, var(--bg));
+  --m3-tertiary-container: var(--md-sys-color-tertiary-container, var(--ok-soft));
+  --m3-on-tertiary-container: var(--md-sys-color-on-tertiary-container, var(--ok));
+  --m3-error: var(--md-sys-color-error, var(--err));
+  --m3-on-error: var(--md-sys-color-on-error, var(--bg));
+  --m3-error-container: var(--md-sys-color-error-container, var(--err-soft));
+  --m3-on-error-container: var(--md-sys-color-on-error-container, var(--err));
+  --m3-surface: var(--md-sys-color-surface, var(--surface));
+  --m3-surface-dim: var(--md-sys-color-surface-dim, var(--bg));
+  --m3-surface-bright: var(--md-sys-color-surface-bright, var(--surface-2));
+  --m3-surface-container-lowest: var(--md-sys-color-surface-container-lowest, var(--bg));
+  --m3-surface-container-low: var(--md-sys-color-surface-container-low, var(--surface));
+  --m3-surface-container: var(--md-sys-color-surface-container, var(--surface-2));
+  --m3-surface-container-high: var(--md-sys-color-surface-container-high, var(--surface-2));
+  --m3-surface-container-highest: var(--md-sys-color-surface-container-highest, var(--surface-3));
+  --m3-on-surface: var(--md-sys-color-on-surface, var(--text));
+  --m3-on-surface-variant: var(--md-sys-color-on-surface-variant, var(--text-2));
+  --m3-surface-variant: var(--md-sys-color-surface-variant, var(--surface-2));
+  --m3-outline: var(--md-sys-color-outline, var(--line-strong));
+  --m3-outline-variant: var(--md-sys-color-outline-variant, var(--line));
+  --m3-inverse-surface: var(--md-sys-color-inverse-surface, var(--v2-background-bg-inverse));
+  --m3-inverse-on-surface: var(--md-sys-color-inverse-on-surface, var(--v2-text-text-inverse));
+  --m3-inverse-primary: var(--md-sys-color-inverse-primary, var(--v2-text-text-accent-hover, var(--accent)));
+  --m3-scrim: var(--md-sys-color-scrim, var(--overlay));
+  --m3-shadow: var(--md-sys-color-shadow, #000);
+  --m3-surface-tint: var(--md-sys-color-surface-tint, var(--accent-bg));
+  --m3-secondary-fb: color-mix(in srgb, var(--accent) 68%, var(--text) 32%);
+  --m3-secondary-container-fb: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
   --m3-elev-1: var(--v2-elevation-raised, 0 1px 2px rgba(0,0,0,.3));
   --m3-elev-2: var(--v2-elevation-floating, 0 2px 6px 2px rgba(0,0,0,.25));
   --m3-elev-3: var(--v2-elevation-overlay, 0 4px 8px 3px rgba(0,0,0,.3));
@@ -160,7 +163,7 @@
 
 
 body {
-  color: var(--text);
+  color: var(--m3-on-surface);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.4;
@@ -168,7 +171,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
-  background: var(--bg);
+  background: var(--m3-surface);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -450,22 +453,19 @@ body {
 
 .card,
 .plugin-card {
-  background: var(--m3-surface-container);
+  background: var(--m3-surface-container-highest);
   border: none;
-  border-radius: var(--m3-shape-l);
+  border-radius: var(--m3-shape-m);
   padding: 22px;
   position: relative;
-  transition: background-color var(--dur-short) var(--ease-soft), transform var(--dur-med) var(--ease-emphasized),
-    box-shadow var(--dur-med) var(--ease-emphasized), border-radius var(--dur-med) var(--ease-emphasized);
+  transition: background-color var(--dur-short) var(--ease-soft);
 }
 .card:hover,
 .plugin-card:hover {
-  background: var(--m3-surface-container-high);
-  box-shadow: var(--m3-elev-1);
-  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--m3-on-surface) 8%, var(--m3-surface-container-highest));
+  box-shadow: none;
+  transform: none;
 }
-.card:active,
-.plugin-card:active { border-radius: var(--m3-shape-m); }
 
 .card-title {
   font: var(--m3-title-s);
@@ -582,21 +582,28 @@ body {
     border-color var(--dur-short) var(--ease-soft), border-radius var(--dur-med) var(--ease-emphasized),
     transform var(--dur-med) var(--spring), box-shadow var(--dur-med) var(--ease-emphasized);
 }
-.btn .md-icon { width: 20px; height: 20px; transition: transform var(--dur-med) var(--ease-emphasized); }
+.btn .md-icon { width: 18px; height: 20px; transition: transform var(--dur-med) var(--ease-emphasized); }
 .btn:hover {
-  background: var(--m3-state-hover-primary);
+  background: color-mix(in srgb, var(--m3-on-surface) 8%, transparent);
   border-color: var(--m3-outline);
-  color: var(--m3-primary);
-  box-shadow: var(--m3-elev-1);
+  color: var(--m3-on-surface);
+  box-shadow: none;
 }
 /* Експресивний морф: контейнер злегка «квадратиться» під пальцем */
 .btn:active {
-  background: var(--m3-state-pressed-primary);
+  background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent);
   border-radius: var(--m3-shape-l);
   transform: scale(0.98);
   box-shadow: none;
 }
-.btn:disabled { opacity: 0.38; cursor: not-allowed; box-shadow: none; }
+.btn:disabled {
+  background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent);
+  border-color: transparent;
+  color: color-mix(in srgb, var(--m3-on-surface) 38%, transparent);
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 1;
+}
 .btn.active {
   background: var(--m3-secondary-container);
   border-color: transparent;
@@ -611,8 +618,16 @@ body {
   color: var(--m3-on-primary);
   box-shadow: var(--m3-elev-1);
 }
-.btn-primary:hover { background: var(--m3-primary); border-color: transparent; color: var(--m3-on-primary); box-shadow: var(--m3-elev-2); filter: brightness(1.06); }
-.btn-primary:active { background: var(--m3-primary); box-shadow: var(--m3-elev-1); filter: brightness(0.96); }
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--m3-on-primary) 8%, var(--m3-primary));
+  border-color: transparent;
+  color: var(--m3-on-primary);
+  box-shadow: var(--m3-elev-2);
+}
+.btn-primary:active {
+  background: color-mix(in srgb, var(--m3-on-primary) 12%, var(--m3-primary));
+  box-shadow: var(--m3-elev-1);
+}
 
 /* Tonal — середній акцент у кольорі статусу */
 .btn-success {
@@ -632,12 +647,17 @@ body {
   border-color: transparent;
   color: var(--m3-on-error-container);
 }
-.btn-danger:hover { border-color: transparent; box-shadow: var(--m3-elev-1); filter: brightness(1.05); }
+.btn-danger:hover { border-color: transparent; box-shadow: var(--m3-elev-1); filter: brightness(1.04); }
+.modal-footer .btn:not(.btn-primary) {
+  border-color: transparent;
+  color: var(--m3-primary);
+}
+.modal-footer .btn:not(.btn-primary):hover { background: color-mix(in srgb, var(--m3-primary) 8%, transparent); box-shadow: none; }
 
 .btn-sm { height: var(--control-height-sm); padding: 0 16px; font: var(--m3-label-m); }
 .btn-sm .md-icon { width: 18px; height: 18px; }
 /* Велика експресивна кнопка для головних дій форм */
-.btn-lg { height: 52px; padding: 0 32px; font: var(--m3-title-s); }
+.btn-lg { height: 56px; padding: 0 28px; font: var(--m3-title-s); }
 .btn-lg .md-icon { width: 22px; height: 22px; }
 .ram-pill .btn-sm { height: 32px; padding: 0 12px; border-color: transparent; }
 /* Головна кнопка меню — тональна */
@@ -683,7 +703,8 @@ body {
 }
 
 /* ==========================================================================
-   Повзунки — M3 Expressive slider: щільна доріжка, великий повзунок з гало
+   Повзунки — точний M3 slider: доріжка 4px, хендл 20px, зазор, стопи,
+   бульбашка значення; дискретні точки з детентів будує JS
    ========================================================================== */
 .md3-slider-card {
   background: var(--m3-surface-container);
@@ -697,7 +718,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 .md3-slider-title { font: var(--m3-title-s); color: var(--m3-on-surface); }
 
@@ -711,20 +732,30 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.md3-slider-track-wrap { position: relative; padding: 14px 0 8px; touch-action: pan-y; }
+.md3-slider-track-wrap { position: relative; padding: 6px 0 4px; touch-action: pan-y; }
 
 .md3-slider-input {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 16px;
-  border-radius: var(--m3-shape-full);
-  background:
-    linear-gradient(to right, var(--m3-primary) 0, var(--m3-primary) var(--p, 0%), transparent var(--p, 0%)),
-    var(--m3-surface-container-highest);
+  height: 40px;
+  background: transparent;
   outline: none;
   cursor: pointer;
   touch-action: pan-y;
+  margin: 0;
+}
+/* Доріжка: активна primary + 6px прозорий зазор + неактивна; поверх — стопи */
+.md3-slider-input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--m3-shape-full);
+  background:
+    linear-gradient(to right,
+      var(--m3-primary) 0,
+      var(--m3-primary) calc(var(--p, 50%) - 4px),
+      transparent calc(var(--p, 50%) - 4px),
+      transparent calc(var(--p, 50%) + 4px),
+      var(--m3-surface-container-highest) calc(var(--p, 50%) + 4px));
 }
 
 .md3-slider-input::-webkit-slider-thumb {
@@ -732,19 +763,37 @@ body {
   appearance: none;
   width: 20px;
   height: 20px;
+  margin-top: -8px;
   border-radius: var(--m3-shape-full);
   background: var(--m3-primary);
   border: none;
   box-shadow: var(--m3-elev-1);
   cursor: grab;
-  transition: transform var(--dur-med) var(--spring), box-shadow var(--dur-short) var(--ease-soft);
+  transition: transform var(--dur-short) var(--ease-emphasized), box-shadow var(--dur-short) var(--ease-soft),
+    width var(--dur-short) var(--ease-emphasized);
 }
-.md3-slider-input:hover::-webkit-slider-thumb { transform: scale(1.15); box-shadow: 0 0 0 10px var(--m3-state-hover-primary), var(--m3-elev-1); }
-.md3-slider-input:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.3); box-shadow: 0 0 0 14px var(--m3-state-pressed-primary), var(--m3-elev-2); }
-.md3-slider-input:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 4px; }
+/* M3 state layer 40px навколо хендла */
+.md3-slider-input:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--m3-primary) 8%, transparent), var(--m3-elev-1);
+}
+.md3-slider-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  width: 4px;
+  box-shadow: 0 0 0 18px color-mix(in srgb, var(--m3-primary) 12%, transparent), var(--m3-elev-1);
+}
+.md3-slider-input:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
 
-.md3-slider-input::-moz-range-progress { height: 16px; background: var(--m3-primary); border-radius: var(--m3-shape-full); }
-.md3-slider-input::-moz-range-track { height: 16px; background: var(--m3-surface-container-highest); border-radius: var(--m3-shape-full); }
+/* Firefox */
+.md3-slider-input::-moz-range-track {
+  height: 4px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-surface-container-highest);
+}
+.md3-slider-input::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+}
 .md3-slider-input::-moz-range-thumb {
   width: 20px;
   height: 20px;
@@ -755,10 +804,64 @@ body {
   cursor: grab;
 }
 
+/* M3 stop indicators 4px: на неактивній — on-surface-variant */
+.md3-slider-stops { position: absolute; left: 0; right: 0; top: 50%; height: 0; pointer-events: none; }
+.md3-slider-stops i {
+  position: absolute;
+  top: -2px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-on-surface-variant);
+}
+.md3-slider-stops i.on { background: var(--m3-on-primary); }
+
+/* M3 value indicator: primary-бульбашка 28px, visible при взаємодії */
+.md3-slider-bubble {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  left: var(--p, 50%);
+  transform: translateX(-50%) scale(0.6);
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3-primary);
+  color: var(--m3-on-primary);
+  font: var(--m3-label-m);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-short) var(--ease-emphasized), transform var(--dur-med) var(--spring);
+}
+.md3-slider-track-wrap:hover .md3-slider-bubble,
+.md3-slider-track-wrap:active .md3-slider-bubble,
+.md3-slider-track-wrap:focus-within .md3-slider-bubble { opacity: 1; transform: translateX(-50%) scale(1); }
+/* M3 disabled: on-surface 38%/12% */
+.md3-slider-input:disabled { cursor: not-allowed; opacity: 1; }
+.md3-slider-input:disabled::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(to right,
+      color-mix(in srgb, var(--m3-on-surface) 38%, transparent) 0,
+      color-mix(in srgb, var(--m3-on-surface) 38%, transparent) calc(var(--p, 50%) - 4px),
+      transparent calc(var(--p, 50%) - 4px),
+      transparent calc(var(--p, 50%) + 4px),
+      color-mix(in srgb, var(--m3-on-surface) 12%, transparent) calc(var(--p, 50%) + 4px));
+}
+.md3-slider-input:disabled::-webkit-slider-thumb { background: color-mix(in srgb, var(--m3-on-surface) 38%, transparent); box-shadow: none; }
+.md3-slider-input:disabled::-moz-range-track { background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent); }
+.md3-slider-input:disabled::-moz-range-progress { background: color-mix(in srgb, var(--m3-on-surface) 38%, transparent); }
+.md3-slider-input:disabled::-moz-range-thumb { background: color-mix(in srgb, var(--m3-on-surface) 38%, transparent); box-shadow: none; }
+
 .md3-slider-ticks {
   display: flex;
   justify-content: space-between;
-  margin-top: 10px;
+  margin-top: 6px;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--m3-on-surface-variant);
@@ -1269,6 +1372,20 @@ body {
   animation: rise var(--dur-med) var(--ease-emphasized) backwards;
 }
 
+/* M3 progress: авторський shadow-DOM читає md-sys ролі сам */
+#m3-loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1500;
+}
+#m3-loading[hidden], md-circular-progress[hidden] { display: none; }
+#cmd-spin { --md-circular-progress-size: 20px; }
+#acc-qr-spin { --md-circular-progress-size: 24px; margin-bottom: 8px; }
+md-circular-progress { flex-shrink: 0; }
+
 /* ==========================================================================
    FAB — M3 Expressive medium: primary-контейнер, великий радіус, пружина
    ========================================================================== */
@@ -1277,9 +1394,9 @@ body {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--m3-shape-l);
   background: var(--m3-primary-container);
   color: var(--m3-on-primary-container);
   border: none;
@@ -1477,10 +1594,10 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: var(--bg);
+  background: var(--m3-surface);
   padding: 6px 24px 0;
   margin: -6px -24px 28px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--m3-outline-variant);
 }
 @media (max-width: 768px) {
   .tabs-nav { padding: 6px 14px 0; margin: -6px -14px 20px; }

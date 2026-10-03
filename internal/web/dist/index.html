@@ -41,6 +41,7 @@
 <body>
 
 <div class="app-container">
+  <md-linear-progress indeterminate id="m3-loading" hidden></md-linear-progress>
   <!-- Top App Bar -->
   <header class="header">
     <div class="brand">
@@ -247,7 +248,9 @@
               <span class="md3-slider-chip" id="quick-tune-base-chip">96 MB</span>
             </div>
             <div class="md3-slider-track-wrap">
-              <input type="range" class="md3-slider-input" id="quick-tune-base" min="32" max="1024" step="1" value="96">
+              <div class="md3-slider-bubble" id="quick-tune-base-bubble">96 MB</div>
+              <div class="md3-slider-stops" id="quick-tune-base-stops"></div>
+              <input type="range" class="md3-slider-input" id="quick-tune-base" min="32" max="1024" step="1" value="96" aria-label="Базовий ліміт RAM">
               <div class="md3-slider-ticks">
                 <span>32M</span><span>256M</span><span>512M</span><span>768M</span><span>1024M</span>
               </div>
@@ -342,7 +345,7 @@
           </button>
           
           <div style="margin-top:16px;">
-            <label class="form-label">Результат виконання</label>
+            <label class="form-label" style="display:flex;align-items:center;gap:10px;">Результат виконання<md-circular-progress indeterminate id="cmd-spin" hidden></md-circular-progress></label>
             <div class="result-wrap">
               <pre id="cmd-result" role="status" aria-live="polite" style="background:var(--md-surface-input); border:1px solid var(--md-border-subtle); border-radius:var(--radius-md); padding:12px; padding-right:90px; min-height:85px; font-family:var(--font-mono); font-size:12px; color:var(--md-text-primary); white-space:pre-wrap; overflow-wrap:anywhere;">Очікування виклику...</pre>
               <button type="button" class="result-copy" id="btn-copy-cmd">Копіювати</button>
@@ -508,7 +511,9 @@
                 <span class="md3-slider-chip" id="setting-base-chip">96 MB</span>
               </div>
               <div class="md3-slider-track-wrap">
-                <input type="range" class="md3-slider-input" id="setting-base-input" min="32" max="1024" step="1" value="96">
+                <div class="md3-slider-bubble" id="setting-base-input-bubble">96 MB</div>
+                <div class="md3-slider-stops" id="setting-base-input-stops"></div>
+                <input type="range" class="md3-slider-input" id="setting-base-input" min="32" max="1024" step="1" value="96" aria-label="Базовий ліміт RAM">
                 <div class="md3-slider-ticks">
                   <span>32M</span><span>256M</span><span>512M</span><span>768M</span><span>1024M</span>
                 </div>
@@ -822,6 +827,7 @@
       <div id="add-acc-tab-qr" role="tabpanel" hidden>
         <p class="auth-lead">Без номера і SMS: тапніть посилання на <b>цьому ж телефоні</b> в <b>офіційному Telegram</b> і підтвердіть вхід. Акаунт створиться з вказаною вище назвою.</p>
         <div class="qr-box">
+          <md-circular-progress indeterminate id="acc-qr-spin" hidden></md-circular-progress>
           <div class="qr-status" id="add-acc-qr-status">Посилання ще не запитано.</div>
           <div class="qr-link" id="add-acc-qr-link" hidden></div>
           <div class="qr-expires" id="add-acc-qr-expires" hidden></div>
@@ -1043,5 +1049,6 @@
 
 <script src="app.js?v={{VERSION}}"></script>
 <script type="module" src="theme/index.js?v={{VERSION}}"></script>
+<script type="module" src="material-progress.js?v={{VERSION}}"></script>
 </body>
 </html>

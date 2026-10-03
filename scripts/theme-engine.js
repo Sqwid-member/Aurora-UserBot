@@ -14,6 +14,7 @@
 
 import { THEMES } from "./themes-data.js"
 import { resolveThemeVariantV2 } from "./resolve.js"
+import { m3Scheme } from "../m3-scheme.js"
 
 const DEFAULT_THEME = "oc-2"
 const KEYS = {
@@ -67,6 +68,29 @@ export function tokensCss(theme, mode) {
   return `:root{color-scheme:${mode};${lines.join("")}}`
 }
 
+// --- True M3 dynamic scheme (vendored material-color-utilities) ---
+// Loaded lazily so a missing/corrupt bundle can never break theming:
+// until it arrives (or if it fails) the M3-baseline fallbacks in app.css apply.
+let m3Gen = null
+function m3Css(theme, mode) {
+  if (typeof m3Gen !== "function") return ""
+  try {
+    const variant = theme[mode] || {}
+    const pal = variant.palette || {}
+    const seed = pal.interactive || pal.info || pal.primary || "#6750A4"
+    const roles = m3Gen(seed, mode === "dark")
+    const css = Object.entries(roles)
+      .map(([k, v]) => `--md-sys-color-${k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}:${v};`)
+      .join("")
+    return `:root{${css}}`
+  } catch {
+    return ""
+  }
+}
+function sheetCss(theme, mode) {
+  return tokensCss(theme, mode) + m3Css(theme, mode)
+}
+
 function schemeMode(scheme) {
   return scheme === "system" ? (schemeQuery.matches ? "dark" : "light") : scheme
 }
@@ -99,11 +123,11 @@ function apply(state, { persist = true } = {}) {
       localStorage.removeItem(KEYS.css("dark"))
       localStorage.removeItem(KEYS.css("light"))
     } catch {}
-    sheetElement().textContent = ""
+    sheetElement().textContent = m3Css(theme, mode)
   } else {
-    const css = tokensCss(theme, mode)
+    const css = sheetCss(theme, mode)
     write(KEYS.css(mode), css)
-    write(KEYS.css(mode === "dark" ? "light" : "dark"), tokensCss(theme, mode === "dark" ? "light" : "dark"))
+    write(KEYS.css(mode === "dark" ? "light" : "dark"), sheetCss(theme, mode === "dark" ? "light" : "dark"))
     sheetElement().textContent = css
   }
 
@@ -157,6 +181,17 @@ window.AuroraTheme = api
 // First paint: the preload script already set the default-oc-2 tokens for
 // other themes; this pass validates state and settles the sheet.
 apply(state, { persist: false })
+
+// The M3 scheme bundle arrives a tick later; re-settle so md-sys roles
+// upgrade from baseline fallbacks to the theme's true dynamic scheme.
+import("../m3-scheme.js")
+  .then((mod) => {
+    if (mod && typeof mod.m3Scheme === "function") {
+      m3Gen = mod.m3Scheme
+      apply(state, { persist: false })
+    }
+  })
+  .catch(() => {})
 
 schemeQuery.addEventListener("change", () => {
   if (state.scheme === "system") apply(state, { persist: false })
