@@ -216,6 +216,17 @@ body {
   outline-offset: 2px;
 }
 
+/* Атмосферний меш-шар за мотивами MandaGram: дві кольорові плями бренду */
+.ambient-mesh {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--m3-primary) 13%, transparent) 0%, transparent 42%),
+    radial-gradient(circle at 88% 90%, color-mix(in srgb, var(--m3-tertiary) 11%, transparent) 0%, transparent 46%),
+    radial-gradient(circle at 50% 55%, color-mix(in srgb, var(--m3-primary) 5%, transparent) 0%, transparent 60%);
+}
 /* Layout */
 .app-container {
   max-width: 1200px;
@@ -245,10 +256,15 @@ body {
 
 .brand { display: flex; align-items: center; gap: 14px; }
 
+.brand-text h1 .version-pill { -webkit-text-fill-color: var(--m3-on-secondary-container); }
 .brand-text h1 {
+  background: linear-gradient(100deg, var(--m3-primary) 20%, var(--m3-tertiary) 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
   font: var(--m3-title-l);
   letter-spacing: 0;
-  color: var(--m3-on-surface);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -372,6 +388,7 @@ body {
 .tabs-nav::-webkit-scrollbar { display: none; }
 
 .tab-btn {
+  overflow: hidden;
   background: transparent;
   color: var(--m3-on-surface-variant);
   border: none;
@@ -457,17 +474,20 @@ body {
 .card,
 .plugin-card {
   background: var(--m3-surface-container-highest);
-  border: none;
-  border-radius: var(--m3-shape-m);
+  border: 1px solid transparent;
+  border-radius: var(--m3-shape-2xl);
   padding: 22px;
   position: relative;
-  transition: background-color var(--dur-short) var(--ease-soft);
+  overflow: hidden;
+  transition: transform var(--dur-short) var(--ease-emphasized), box-shadow var(--dur-med) var(--ease-emphasized),
+    border-color var(--dur-short) var(--ease-soft), background-color var(--dur-short) var(--ease-soft);
 }
 .card:hover,
 .plugin-card:hover {
-  background: color-mix(in srgb, var(--m3-on-surface) 8%, var(--m3-surface-container-highest));
-  box-shadow: none;
-  transform: none;
+  background: var(--m3-surface-container-highest);
+  border-color: var(--m3-primary);
+  box-shadow: var(--m3-elev-3);
+  transform: translateY(-4px);
 }
 
 .card-title {
@@ -565,6 +585,8 @@ body {
    Кнопки — M3 Expressive: 5 конфігурацій, повний радіус, морф при натисканні
    ========================================================================== */
 .btn {
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -572,7 +594,8 @@ body {
   height: var(--control-height);
   padding: 0 24px;
   border: 1px solid var(--m3-outline);
-  border-radius: var(--m3-shape-full);
+  border-radius: 26px;
+  overflow: hidden;
   background: transparent;
   font-family: inherit;
   font: var(--m3-label-l);
@@ -595,8 +618,8 @@ body {
 /* Експресивний морф: контейнер злегка «квадратиться» під пальцем */
 .btn:active {
   background: color-mix(in srgb, var(--m3-primary) 12%, transparent);
-  border-radius: var(--m3-shape-l);
-  transform: scale(0.98);
+  border-radius: 10px;
+  transform: scale(0.96);
   box-shadow: none;
 }
 .btn:disabled {
@@ -611,7 +634,7 @@ body {
   background: var(--m3-secondary-container);
   border-color: transparent;
   color: var(--m3-on-secondary-container);
-  border-radius: var(--m3-shape-m);
+  border-radius: 14px;
 }
 .btn:focus-visible { outline: 2px solid var(--m3-primary); outline-offset: 2px; }
 
@@ -627,10 +650,13 @@ body {
   border-color: transparent;
   color: var(--m3-on-primary);
   box-shadow: var(--m3-elev-2);
+  transform: translateY(-1px);
 }
 .btn-primary:active {
   background: color-mix(in srgb, var(--m3-on-primary) 12%, var(--m3-primary));
   box-shadow: var(--m3-elev-1);
+  border-radius: 12px;
+  transform: scale(0.97);
 }
 
 /* Tonal — середній акцент у кольорі статусу */
@@ -658,10 +684,12 @@ body {
 }
 .modal-footer .btn:not(.btn-primary):hover { background: color-mix(in srgb, var(--m3-primary) 8%, transparent); box-shadow: none; }
 
-.btn-sm { height: var(--control-height-sm); padding: 0 16px; font: var(--m3-label-m); }
+.btn-sm { height: var(--control-height-sm); padding: 0 16px; font: var(--m3-label-m); border-radius: 20px; }
+.btn-sm:active { border-radius: 8px; }
 .btn-sm .md-icon { width: 18px; height: 18px; }
 /* Велика експресивна кнопка для головних дій форм */
-.btn-lg { height: 56px; padding: 0 28px; font: var(--m3-title-s); }
+.btn-lg { height: 56px; padding: 0 28px; font: var(--m3-title-s); border-radius: 32px; }
+.btn-lg:active { border-radius: 12px; }
 .btn-lg .md-icon { width: 22px; height: 22px; }
 .ram-pill .btn-sm { height: 32px; padding: 0 12px; border-color: transparent; }
 /* Головна кнопка меню — тональна */
@@ -699,7 +727,7 @@ body {
     border-radius var(--dur-med) var(--ease-emphasized), transform var(--dur-med) var(--spring);
 }
 .btn-icon:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
-.btn-icon:active { border-radius: var(--m3-shape-m); transform: scale(0.92); }
+.btn-icon:active { border-radius: 10px; transform: scale(0.92); }
 .btn-icon .md-icon { margin: 0; width: 20px; height: 20px; }
 .btn-icon.active, .btn-icon[aria-pressed="true"] {
   background: var(--m3-secondary-container);
@@ -1168,7 +1196,7 @@ body {
     border-radius var(--dur-med) var(--ease-emphasized), transform var(--dur-med) var(--spring);
 }
 .modal-close:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
-.modal-close:active { border-radius: var(--m3-shape-m); transform: rotate(90deg) scale(0.92); }
+.modal-close:active { border-radius: 10px; transform: rotate(90deg) scale(0.92); }
 
 .modal-body { padding: 16px 24px; overflow-y: auto; flex: 1; }
 .modal-footer {
@@ -1295,6 +1323,8 @@ body {
 }
 
 .control-action-card {
+  position: relative;
+  overflow: hidden;
   background: var(--m3-surface-container);
   border: none;
   border-radius: var(--m3-shape-l);
@@ -1344,6 +1374,8 @@ body {
 
 .quick-jumps-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .quick-jump-chip {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--m3-outline);
   color: var(--m3-on-surface-variant);
   background: var(--m3-surface-container-low);
@@ -1414,7 +1446,7 @@ md-circular-progress { flex-shrink: 0; }
     box-shadow var(--dur-med) var(--ease-emphasized);
 }
 .fab-control-menu .md-icon { width: 24px; height: 24px; }
-.fab-control-menu:hover { transform: scale(1.05); box-shadow: var(--m3-elev-3); filter: brightness(1.04); }
+.fab-control-menu:hover { transform: scale(1.05); box-shadow: var(--m3-elev-3), 0 8px 28px color-mix(in srgb, var(--m3-primary) 38%, transparent); filter: brightness(1.04); }
 .fab-control-menu:active { transform: scale(0.9) rotate(-8deg); border-radius: 14px; }
 
 @media (max-width: 768px) {
@@ -1479,8 +1511,8 @@ md-circular-progress { flex-shrink: 0; }
 .toast.err::after { background: var(--err); }
 
 @keyframes toastIn {
-  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  0% { opacity: 0; transform: translateY(20px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes toastTimer { to { transform: scaleX(0); } }
 
@@ -1599,7 +1631,9 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: var(--m3-surface);
+  background: color-mix(in srgb, var(--m3-surface-container) 82%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   padding: 6px 24px 0;
   margin: -6px -24px 28px;
   border-bottom: 1px solid var(--m3-outline-variant);
@@ -1628,6 +1662,8 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
   border-right: 1px solid var(--m3-outline);
   background: transparent;
   color: var(--m3-on-surface);
+  position: relative;
+  overflow: hidden;
   font-family: inherit;
   font: var(--m3-label-l);
   letter-spacing: 0;
@@ -1684,7 +1720,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
     border-radius var(--dur-med) var(--ease-emphasized), transform var(--dur-med) var(--spring);
 }
 .pw-eye:hover { background: var(--m3-state-hover); color: var(--m3-on-surface); }
-.pw-eye:active { border-radius: var(--m3-shape-m); transform: translateY(-50%) scale(0.9); }
+.pw-eye:active { border-radius: 10px; transform: translateY(-50%) scale(0.9); }
 
 /* Результат команди — тональна кнопка копіювання */
 .result-wrap { position: relative; }
@@ -1739,6 +1775,25 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 }
 .log-jump.visible { opacity: 1; transform: none; pointer-events: auto; }
 .log-jump:active { transform: scale(0.95); }
+
+/* Manda ripple: JS підкладає span.ripple у точку натискання */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: scale(0);
+  animation: ripple-animation 0.6s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+  background-color: color-mix(in srgb, var(--m3-on-primary) 35%, transparent);
+  will-change: transform, opacity;
+}
+.btn:not(.btn-primary) .ripple, .tab-btn .ripple, .control-action-card .ripple,
+.account-item .ripple, .quick-jump-chip .ripple {
+  background-color: color-mix(in srgb, var(--m3-primary) 18%, transparent);
+}
+@keyframes ripple-animation {
+  0% { transform: scale(0); opacity: 1; }
+  100% { transform: scale(4); opacity: 0; }
+}
 
 /* Клавіатурний фокус у Центрі керування */
 .control-action-card.kbd-focus {
@@ -1930,6 +1985,8 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 
 .accounts-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; margin-bottom: 10px; }
 .account-item {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 12px;

@@ -74,6 +74,22 @@
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+  // Manda-style touch ripple: a span blooming from the press point.
+  document.addEventListener('pointerdown', (e) => {
+    const host = e.target.closest('.btn,.tab-btn,.control-action-card,.quick-jump-chip,.account-item,.seg button');
+    if (!host || host.disabled) return;
+    const rect = host.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    if (!size) return;
+    const dot = document.createElement('span');
+    dot.className = 'ripple';
+    dot.style.width = dot.style.height = `${size}px`;
+    dot.style.left = `${e.clientX - rect.left - size / 2}px`;
+    dot.style.top = `${e.clientY - rect.top - size / 2}px`;
+    dot.addEventListener('animationend', () => dot.remove());
+    host.appendChild(dot);
+  });
+
   // Єдиний форматер тривалості (короткий для карток, довгий для деталей).
   // relTime() лишається окремо — у нього інша семантика («N хв тому»).
   function humanUptime(sec, long = false) {
