@@ -1,0 +1,28 @@
+{
+  "name": "id",
+  "version": "1.0.0",
+  "description": "Показує ID чату, повідомлення й відправника за командою /id.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["utility", "python"],
+  "runtime": {
+    "command": "python3",
+    "args": ["id.py"]
+  },
+  "events": ["message.new"],
+  "commands": [
+    {
+      "name": "id",
+      "usage": "id",
+      "description": "Показати ідентифікатори цього чату",
+      "aliases": ["ид", "айди"],
+      "in_chat": true
+    }
+  ],
+  "permissions": {},
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}

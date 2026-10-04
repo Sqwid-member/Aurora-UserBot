@@ -1,0 +1,28 @@
+{
+  "name": "ping",
+  "version": "1.0.0",
+  "description": "Перевірка живості: відповідає «Понг!» з аптаймом плагіна.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["utility", "python"],
+  "runtime": {
+    "command": "python3",
+    "args": ["ping.py"]
+  },
+  "events": [],
+  "commands": [
+    {
+      "name": "ping",
+      "usage": "ping",
+      "description": "Перевірити, чи живий юзербот",
+      "aliases": ["пінг", "пинг"],
+      "in_chat": true
+    }
+  ],
+  "permissions": {},
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}

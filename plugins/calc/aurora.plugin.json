@@ -1,0 +1,39 @@
+{
+  "name": "calc",
+  "version": "1.0.0",
+  "description": "Безпечний калькулятор: рахує вирази без eval().",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["utility", "python"],
+  "runtime": {
+    "command": "python3",
+    "args": ["calc.py"]
+  },
+  "events": ["settings.changed"],
+  "commands": [
+    {
+      "name": "calc",
+      "usage": "calc <вираз>",
+      "description": "Порахувати вираз (+ - * / // % **, дужки, sqrt sin cos log)",
+      "aliases": ["кальк", "посчитай"],
+      "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "precision",
+      "type": "number",
+      "title": "Точність",
+      "description": "Знаків після коми у відповіді (0–10)",
+      "default": 6,
+      "min": 0,
+      "max": 10
+    }
+  ],
+  "permissions": {},
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}

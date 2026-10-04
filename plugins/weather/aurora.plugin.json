@@ -1,0 +1,40 @@
+{
+  "name": "weather",
+  "version": "1.0.0",
+  "description": "Погода зараз через wttr.in, без API-ключа.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["utility", "python", "network"],
+  "runtime": {
+    "command": "python3",
+    "args": ["weather.py"]
+  },
+  "events": ["settings.changed"],
+  "commands": [
+    {
+      "name": "weather",
+      "usage": "weather [місто]",
+      "description": "Погода зараз (за замовчуванням — твоє місто)",
+      "aliases": ["погода"],
+      "in_chat": true
+    }
+  ],
+  "settings": [
+    {
+      "key": "default_city",
+      "type": "text",
+      "title": "Місто за замовчуванням",
+      "description": "Показувати, коли місто не вказано",
+      "default": "Kyiv",
+      "placeholder": "Kyiv"
+    }
+  ],
+  "permissions": {
+    "net": true
+  },
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}

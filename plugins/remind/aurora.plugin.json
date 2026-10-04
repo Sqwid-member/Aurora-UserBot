@@ -1,0 +1,30 @@
+{
+  "name": "remind",
+  "version": "1.0.0",
+  "description": "Нагадування з таймером: /remind 10m текст — доставить у той самий чат.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["utility", "python"],
+  "runtime": {
+    "command": "python3",
+    "args": ["remind.py"]
+  },
+  "events": ["message.new"],
+  "commands": [
+    {
+      "name": "remind",
+      "usage": "remind <час> <текст>",
+      "description": "Нагадати через час (10s, 10m, 2h, 1d)",
+      "aliases": ["нагадай", "напомни"],
+      "in_chat": true
+    }
+  ],
+  "permissions": {
+    "tg": ["send"]
+  },
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 0
+  }
+}

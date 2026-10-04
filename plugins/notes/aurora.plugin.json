@@ -1,0 +1,28 @@
+{
+  "name": "notes",
+  "version": "1.0.0",
+  "description": "Особистий нотатник у сховищі ядра: save/get/list/del.",
+  "author": "Aurora",
+  "license": "MIT",
+  "language": "python",
+  "tags": ["utility", "python", "storage"],
+  "runtime": {
+    "command": "python3",
+    "args": ["notes.py"]
+  },
+  "events": [],
+  "commands": [
+    {
+      "name": "note",
+      "usage": "note <save|get|list|del> [ключ] [текст]",
+      "description": "Зберегти або прочитати нотатку",
+      "aliases": ["нотатка", "заметка", "notes"],
+      "in_chat": true
+    }
+  ],
+  "permissions": {},
+  "limits": {
+    "memory_mb": 64,
+    "idle_timeout_sec": 900
+  }
+}
