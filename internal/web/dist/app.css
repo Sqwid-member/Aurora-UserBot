@@ -114,10 +114,10 @@
   --control-height: 40px;
   --control-height-sm: 32px;
 
-  /* Шрифти */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  /* Шрифти — нативні файли в dist/fonts (офлайн), M3 за замовчуванням Roboto */
+  --font-sans: "Roboto", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
 
   /* === M3 Expressive: типографічна шкала === */
