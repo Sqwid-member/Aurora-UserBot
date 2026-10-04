@@ -273,6 +273,7 @@ $ aurora sessions                     # список активних сесій
 $ aurora sessions kill <hash>         # завершити сесію
 $ aurora profile                      # профіль (ім'я, юзернейм, біо)
 $ aurora gc                           # збір сміття в ядрі
+$ aurora snoop [n]                  # останні видалені/змінені повідомлення
 $ aurora plugins                      # список
 $ aurora plugin start|stop|restart <ім'я>
 $ aurora plugin install <git-url>

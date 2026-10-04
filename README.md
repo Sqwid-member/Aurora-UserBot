@@ -174,6 +174,7 @@ $ aurora sessions                     # list active Telegram sessions
 $ aurora sessions kill <hash>         # terminate a session
 $ aurora profile                      # show profile (name, username, bio)
 $ aurora gc                           # garbage-collect the core
+$ aurora snoop [n]                  # recent deleted/edited messages (core watcher)
 $ aurora plugins                      # list plugins
 $ aurora plugin start|stop|restart <name>
 $ aurora plugin install <git-url> [name]

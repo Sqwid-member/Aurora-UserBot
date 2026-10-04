@@ -18,9 +18,11 @@ import (
 	"github.com/Sqwid-member/Aurora-UserBot/internal/app"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/buildinfo"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/config"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/kv"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/logx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/snoop"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 )
@@ -55,6 +57,8 @@ const usage = `🌌 Aurora — модульний Telegram-юзербот
   sessions            список активних сесій Telegram
   sessions kill <hash>
                       завершити сесію
+  snoop [n]           останні видалені/змінені повідомлення (n=20)
+                      watcher: snoop.enabled, ціль — snoop.target (за замовчуванням «me»)
   profile             показати профіль (ім'я, юзернейм, біо)
   gc                  примусовий збір сміття в ядрі
   plugins             список плагінів
@@ -156,6 +160,8 @@ func run(args []string) error {
 		return cmdSessions(layout, args)
 	case "profile":
 		return cmdProfile(layout)
+	case "snoop":
+		return cmdSnoop(layout, args)
 	case "gc":
 		return cmdGC(layout)
 	case "plugins", "plugin":
@@ -639,6 +645,38 @@ func cmdProfile(layout paths.Layout) error {
 	}
 	if p.About != "" {
 		fmt.Printf("Біо:       %s\n", p.About)
+	}
+	return nil
+}
+
+// cmdSnoop prints recent deleted/edited catches from the local KV store.
+// Works offline: the watcher persists every catch next to the messages.
+func cmdSnoop(layout paths.Layout, args []string) error {
+	n := 20
+	if len(args) > 0 {
+		var err error
+		n, err = strconv.Atoi(args[0])
+		if err != nil || n <= 0 {
+			return fmt.Errorf("кількість має бути додатним числом, отримано %q", args[0])
+		}
+		if n > 200 {
+			n = 200
+		}
+	}
+	store, err := kv.Open(layout.DBFile())
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	list := snoop.Recent(store, n)
+	if len(list) == 0 {
+		fmt.Println("Поки що нічого не спіймано (потрібні видалення/редагування після увімкнення).")
+		fmt.Println("Перевірка: snoop.enabled у config.json, ядро запущене.")
+		return nil
+	}
+	for _, c := range list {
+		when := time.Unix(c.At, 0).Format("02.01 15:04")
+		fmt.Printf("── %s ──\n%s\n", when, c.Text())
 	}
 	return nil
 }

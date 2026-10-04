@@ -43,6 +43,25 @@ type Config struct {
 
 	// ActiveAccount is the ID of the currently selected account in the UI.
 	ActiveAccount string `json:"active_account,omitempty"`
+
+	// Snoop watches deleted and edited messages.
+	Snoop Snoop `json:"snoop"`
+}
+
+// Snoop holds the deleted/edited message watcher settings.
+type Snoop struct {
+	// Enabled records messages and reports deletions/edits.
+	Enabled bool `json:"enabled"`
+	// Target is where catches are posted ("me" by default).
+	Target string `json:"target,omitempty"`
+	// NotifyDelete posts a message when something is deleted.
+	NotifyDelete bool `json:"notify_delete"`
+	// NotifyEdit posts a message when something is edited.
+	NotifyEdit bool `json:"notify_edit"`
+	// KeepDays bounds how long messages are remembered.
+	KeepDays int `json:"keep_days,omitempty"`
+	// MaxMessages caps remembered messages.
+	MaxMessages int `json:"max_messages,omitempty"`
 }
 
 // Telegram holds Telegram-specific configuration.
@@ -205,6 +224,14 @@ func Default() *Config {
 			Sandbox:         true,
 			DefaultMemoryMB: 256,
 			Disabled:        []string{},
+		},
+		Snoop: Snoop{
+			Enabled:      true,
+			Target:       "me",
+			NotifyDelete: true,
+			NotifyEdit:   true,
+			KeepDays:     7,
+			MaxMessages:  2000,
 		},
 	}
 }
@@ -377,6 +404,16 @@ func (c *Config) normalize() {
 	}
 	if c.Runtime.LogLevel == "" {
 		c.Runtime.LogLevel = d.Runtime.LogLevel
+	}
+	// Snoop knobs that must never stay empty/zero when the watcher runs.
+	if c.Snoop.Target == "" {
+		c.Snoop.Target = "me"
+	}
+	if c.Snoop.KeepDays <= 0 {
+		c.Snoop.KeepDays = 7
+	}
+	if c.Snoop.MaxMessages <= 0 {
+		c.Snoop.MaxMessages = 2000
 	}
 	if c.Runtime.MemLimitMB < 0 {
 		c.Runtime.MemLimitMB = 0

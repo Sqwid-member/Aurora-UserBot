@@ -29,6 +29,7 @@ import (
 	"github.com/Sqwid-member/Aurora-UserBot/internal/paths"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/plugins"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/proto"
+	"github.com/Sqwid-member/Aurora-UserBot/internal/snoop"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/sysx"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/tgc"
 	"github.com/Sqwid-member/Aurora-UserBot/internal/web"
@@ -63,6 +64,9 @@ type App struct {
 	accountsMu sync.RWMutex
 	accounts   map[string]*accountRuntime
 	activeAcc  string
+
+	snoopMu sync.Mutex
+	snoopW  *snoop.Watcher
 
 	shutdownOnce sync.Once
 	stopFn       context.CancelFunc
@@ -1048,6 +1052,9 @@ func (a *App) emitForAccount(accID string, name string, data any) {
 			a.maybeChatCommand(accID, m)
 		}
 	}
+	// The snoop watcher sees the same events (never blocks: local KV
+	// only, delivery fans out to a goroutine).
+	a.snoopObserve(accID, name, data)
 	a.Plugins.EmitForAccount(accID, name, data, func(accountID, pluginName string) bool {
 		return a.IsPluginEnabledForAccount(accountID, pluginName)
 	})
